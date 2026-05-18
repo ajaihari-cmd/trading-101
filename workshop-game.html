@@ -55,8 +55,18 @@
   #sdAnnotation .legend .sw.cur { background: var(--accent); height: 2px; }
   #sdAnnotation .legend .key:last-child { color: var(--accent); font-weight: 700; }
 
+  /* Big expiry warning banner */
+  .expiry-banner { background: linear-gradient(90deg, #C8102E, #E8442E); color: #ffffff; border-radius: 10px; padding: 12px 18px; margin-bottom: 10px; display: flex; align-items: center; gap: 14px; box-shadow: 0 4px 16px rgba(200,16,46,0.25); font-weight: 700; animation: expiryPulse 1.6s ease-in-out infinite; }
+  .expiry-banner .icon { font-size: 24px; line-height: 1; }
+  .expiry-banner .title { font-size: 16px; letter-spacing: 0.3px; }
+  .expiry-banner .sub { font-size: 12px; font-weight: 500; opacity: 0.92; margin-top: 2px; }
+  @keyframes expiryPulse { 0%, 100% { box-shadow: 0 4px 16px rgba(200,16,46,0.25); } 50% { box-shadow: 0 4px 22px rgba(200,16,46,0.5); } }
+
   /* Calendar strip — shows each round's date + which contract expires */
-  .cal-strip { display: grid; grid-template-columns: repeat(10, 1fr); gap: 3px; margin-bottom: 10px; }
+  .cal-strip { display: grid; grid-template-columns: repeat(11, 1fr); gap: 3px; margin-bottom: 10px; }
+  .cal-cell.practice { background: #1a3a7a; border-color: #1a3a7a; }
+  .cal-cell.practice .r, .cal-cell.practice .d, .cal-cell.practice .x { color: #ffffff; }
+  .cal-cell.practice.now { background: var(--accent); border-color: var(--accent); }
   .cal-cell { background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 4px 2px 5px; text-align: center; font-variant-numeric: tabular-nums; position: relative; cursor: pointer; transition: transform 0.08s, box-shadow 0.08s, background 0.08s; }
   .cal-cell:hover { background: #eaeaea; transform: translateY(-1px); box-shadow: var(--shadow); }
   .cal-cell .r { font-size: 8px; color: var(--muted); letter-spacing: 1px; font-weight: 700; }
@@ -147,6 +157,10 @@
   .rank-pill.rk-1 { background: #1B7F3A; color: #ffffff; }
   .rank-pill.rk-last { background: var(--accent); color: #ffffff; }
 
+  /* Kill-player button */
+  .kill-btn { background: transparent; border: 1px solid #d8d8d8; color: var(--accent); width: 20px; height: 20px; border-radius: 50%; padding: 0; font-size: 13px; line-height: 1; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; margin-left: 6px; transition: background 0.1s, color 0.1s; }
+  .kill-btn:hover { background: var(--accent); color: #ffffff; border-color: var(--accent); }
+
   /* Per-team positions broken out by month — with reorder animation */
   .team-pos { padding: 6px 6px 8px; border-bottom: 1px dashed var(--border); border-radius: 6px; cursor: pointer; transition: background 0.2s, transform 0.3s ease; }
   .team-pos:hover { background: #fafafa; }
@@ -225,12 +239,12 @@
   <div class="header-row">
     <div>
       <h1>Trading 101 — Workshop <span>· Walk JUN to DEC</span></h1>
-      <div class="sub">Every team starts short <strong>1,200 lots JUN HO</strong>. 10 rounds. Highest MTM P&amp;L wins.</div>
+      <div class="sub">Practice round → then 10 scoring rounds. Every team starts short <strong>1,200 lots JUN HO</strong>. Highest MTM P&amp;L wins.</div>
     </div>
     <div class="controls">
-      <span class="round-pill">
-        Round <span class="num" id="roundNum">1</span><span class="of">/10</span>
-        <span class="date" id="roundDate">May 15</span>
+      <span class="round-pill" id="roundPill">
+        <span id="roundLabel">Round</span> <span class="num" id="roundNum">—</span><span class="of" id="roundOf">/10</span>
+        <span class="date" id="roundDate">Practice</span>
       </span>
       <button class="btn-accent" id="btnNext">Next round →</button>
       <button class="btn-slate" id="btnScoreboard">Show scoreboard</button>
@@ -238,8 +252,11 @@
     </div>
   </div>
 
-  <!-- CALENDAR STRIP — shows the 15-round timeline and which contract expires when -->
+  <!-- CALENDAR STRIP — shows the 10-round timeline and which contract expires when -->
   <div class="cal-strip" id="calStrip"></div>
+
+  <!-- BIG EXPIRY WARNING (only shown when the current round retires a contract) -->
+  <div id="expirySlot"></div>
 
   <!-- MAIN LAYOUT -->
   <div class="main">
@@ -308,6 +325,13 @@ const STARTING_ENTRY   = 3.8500;
 // --- Scripted curves -----------------------------------------
 // Prices are in $/gal, 4 decimal places throughout
 const SCRIPTED_ROUNDS = [
+  // PRACTICE round — same curve as R1, but flagged so participants reset when the real
+  // game starts.  Let people click around, place a couple of trades, see how the UI works.
+  {
+    idx: 0, date: 'Practice', mode: 'practice', practice: true,
+    curve: { JUN: 3.8500, JUL: 3.8540, AUG: 3.8520, SEP: 3.8490, OCT: 3.8550, NOV: 3.8610, DEC: 3.8680 },
+    news: 'practice'
+  },
   // R1: Near-flat seasonal curve — small driving-season bump (JUL), shoulder-season dip (SEP),
   //     winter heating premium (NOV/DEC). Total JUN→DEC contango under 2¢.
   {
@@ -378,26 +402,36 @@ const SD_DATA = {
   fiveYearMax: [165, 162, 156, 152, 154, 158, 152, 145, 140, 142, 148, 156],
   fiveYearAvg: [138, 134, 130, 128, 132, 136, 130, 125, 122, 126, 132, 138],
   fiveYearMin: [110, 108, 105, 108, 112, 116, 112, 108, 104, 108, 114, 120],
-  // Current year — flat start, COVID builds Jun-Jul, Iran shock draws Aug onward
-  currentYear:  [130, 128, 132, 138, 145, 175, 188, 165, 150, 140, 138, 142]
+  // Current year — flat start; COVID builds Jun/Jul to records; Iran shock at Aug starts a
+  // sharp draw. By Sep (2 rounds after Iran) stocks crash to/below the 5-yr min, Oct deepens
+  // the deficit, then stocks slowly rebuild into year-end.
+  //          Jan  Feb  Mar  Apr  May  Jun  Jul  Aug  Sep  Oct  Nov  Dec
+  currentYear:[130, 128, 132, 138, 145, 175, 188, 165, 100,  95, 108, 118]
 };
-// Map round index (1-10) to calendar month index (0=Jan ... 11=Dec)
+// Map state.round (1=Practice .. 11=R10) to calendar month index (0=Jan ... 11=Dec)
 const ROUND_TO_MONTH_IDX = {
-  1: 4,   // May (R1: May 15 baseline)
-  2: 4,   // May (R2: May 25 COVID)
-  3: 5,   // Jun (R3: Jun 30 JUN expires)
-  4: 6,   // Jul (R4: Jul 30 JUL expires)
-  5: 7,   // Aug (R5: Aug 5 IRAN strike)
-  6: 7,   // Aug (R6: Aug 30 AUG expires)
-  7: 8,   // Sep (R7: Sep 30 SEP expires)
-  8: 9,   // Oct (R8: Oct 30 OCT expires)
-  9: 10,  // Nov (R9: Nov 30 NOV expires)
-  10: 11  // Dec (R10: Dec 15 GAME OVER)
+  1:  4,   // Practice  -> May
+  2:  4,   // R1 May 15
+  3:  4,   // R2 May 25 COVID
+  4:  5,   // R3 Jun 30 JUN expires
+  5:  6,   // R4 Jul 30 JUL expires
+  6:  7,   // R5 Aug 5 IRAN strike
+  7:  7,   // R6 Aug 30 AUG expires
+  8:  8,   // R7 Sep 30 SEP expires
+  9:  9,   // R8 Oct 30 OCT expires
+  10: 10,  // R9 Nov 30 NOV expires
+  11: 11   // R10 Dec 15 GAME OVER
 };
 
 // --- News mockup library -------------------------------------
 function renderNews(key) {
   switch (key) {
+    case 'practice': return `
+      <div class="news-mock news-system" style="background: #1a3a7a;">
+        <div class="label">PRACTICE ROUND</div>
+        <div class="headline">Try out the trade ticket — nothing here counts</div>
+        <div class="dek">Place a few buy/sell spreads to see how the bid/ask works, how your position changes, and how MTM moves. When the instructor clicks Next Round, everyone resets to a fresh short 1,200 JUN at $3.8500 and the real game begins.</div>
+      </div>`;
     case 'flat_start': return `
       <div class="news-mock news-eia">
         <div class="header"><span class="logo">U.S. EIA</span><span class="title">Weekly Petroleum Status Report</span><span class="when">10:30 a.m. ET</span></div>
@@ -664,6 +698,24 @@ function handleExpiries(round) {
 function nextRound() {
   if (state.round >= SCRIPTED_ROUNDS.length) return;
   const currentRound = state.round;
+  const leavingPractice = SCRIPTED_ROUNDS[currentRound - 1].practice;
+
+  if (leavingPractice) {
+    // Leaving the practice round — wipe every team's positions and trade log, then
+    // restart everyone fresh at the next round's marks.  Also clear Firebase /teams so
+    // participants pick up the reset.
+    if (fbEnabled) fbDB.ref('teams').remove().catch(()=>{});
+    participantTeams = {};
+    state.round += 1;
+    const newR = SCRIPTED_ROUNDS[state.round - 1];
+    for (const team of state.teams) {
+      team.positions = [{ month: 'JUN', lots: 1200, entry: newR.curve.JUN, side: 'short' }];
+      team.realized = 0;
+      team.tradeLog = [];
+    }
+    return;
+  }
+
   // 1. Execute scripted strategies for the current round
   for (const team of state.teams) {
     if (team.human) continue;
@@ -729,7 +781,31 @@ function fmt$(x) {
   return sign + '$' + Math.abs(Math.round(x)).toLocaleString('en-US');
 }
 
-// Calendar strip — 15-round timeline with expiry markers
+// Expiry warning banner — shown when the current round's `expires` flag is set.
+function renderExpiryBanner() {
+  const r = SCRIPTED_ROUNDS[state.round - 1];
+  const slot = document.getElementById('expirySlot');
+  if (!slot) return;
+  if (!r || !r.expires) { slot.innerHTML = ''; return; }
+  const m = r.expires;
+  const idx = MONTHS.indexOf(m);
+  const next = MONTHS.slice(idx + 1).find(mo => r.curve[mo] != null);
+  const frontPx = r.curve[m];
+  const backPx = next ? r.curve[next] : null;
+  const spread = (frontPx != null && backPx != null) ? (frontPx - backPx) : null;
+  const spreadTxt = (spread != null)
+    ? `${m}-${next} spread: ${spread >= 0 ? '+' : '-'}$${Math.abs(spread).toFixed(4)}/gal`
+    : '';
+  slot.innerHTML = `<div class="expiry-banner">
+    <span class="icon">⚠️</span>
+    <div>
+      <div class="title">${m} contract expires this round — roll out NOW or get force-rolled</div>
+      <div class="sub">${spreadTxt}${spreadTxt ? ' · ' : ''}If you're still short ${m} at the end of this round it gets force-rolled to ${next || 'next available month'} at the round's marks.</div>
+    </div>
+  </div>`;
+}
+
+// Calendar strip — 10-round timeline with expiry markers
 function renderCalStrip() {
   let html = '';
   for (let i = 0; i < SCRIPTED_ROUNDS.length; i++) {
@@ -737,14 +813,16 @@ function renderCalStrip() {
     const isNow  = (i + 1) === state.round;
     const isPast = (i + 1) <  state.round;
     const cls = ['cal-cell'];
+    if (r.practice) cls.push('practice');
     if (isPast) cls.push('past');
     if (isNow)  cls.push('now');
     if (r.expires) cls.push('expiry');
-    // Parse the visible date — drop the "· JUN expires" / "— WAR" suffix for the strip cell
     const shortDate = r.date.split(/[·—]/)[0].trim();
     const exTag = r.expires ? `${r.expires} ×` : '';
-    html += `<div class="${cls.join(' ')}" data-round="${i + 1}" title="Jump to Round ${i + 1} · ${r.date}">
-      <div class="r">R${i + 1}</div>
+    const label = r.practice ? 'PRAC' : `R${i}`; // R1..R10 because index 0 is practice
+    const titleLbl = r.practice ? 'Practice round' : `Round ${i} · ${r.date}`;
+    html += `<div class="${cls.join(' ')}" data-round="${i + 1}" title="Jump to ${titleLbl}">
+      <div class="r">${label}</div>
       <div class="d">${shortDate}</div>
       <div class="x">${exTag || '&nbsp;'}</div>
     </div>`;
@@ -922,15 +1000,27 @@ function renderSD() {
 function render() {
   const r = SCRIPTED_ROUNDS[state.round - 1];
 
-  // Header
-  document.getElementById('roundNum').textContent = state.round;
+  // Header — Practice shows "Practice" instead of round number / total.
+  // Real rounds 1..10 map to state.round 2..11.
+  if (r.practice) {
+    document.getElementById('roundLabel').textContent = '';
+    document.getElementById('roundNum').textContent = 'Practice';
+    document.getElementById('roundOf').textContent = '';
+    document.getElementById('newsRound').textContent = '0';
+  } else {
+    document.getElementById('roundLabel').textContent = 'Round';
+    document.getElementById('roundNum').textContent = state.round - 1;
+    document.getElementById('roundOf').textContent = '/10';
+    document.getElementById('newsRound').textContent = state.round - 1;
+  }
   document.getElementById('roundDate').textContent = r.date;
-  document.getElementById('newsRound').textContent = state.round;
   document.getElementById('btnNext').disabled = state.round >= SCRIPTED_ROUNDS.length;
   if (state.round >= SCRIPTED_ROUNDS.length) {
     document.getElementById('btnNext').textContent = 'Game over';
+  } else if (r.practice) {
+    document.getElementById('btnNext').textContent = 'Start the game → R1';
   } else {
-    document.getElementById('btnNext').textContent = `Next round → R${state.round + 1}`;
+    document.getElementById('btnNext').textContent = `Next round → R${state.round}`;
   }
 
   // News
@@ -968,6 +1058,9 @@ function render() {
 
   // Calendar strip
   renderCalStrip();
+
+  // Big expiry warning
+  renderExpiryBanner();
 
   // Supply & Demand chart
   renderSD();
@@ -1047,16 +1140,25 @@ function renderPositions() {
       } else {
         let rows = '';
         for (const e of t.tradeLog) {
-          const desc = e.action === 'force-close'
-            ? `Force-close ${e.lots.toLocaleString()} ${e.closeMonth} @ $${e.closePx.toFixed(4)}`
-            : `${e.action === 'force-roll' ? 'Force-roll' : 'Roll'} ${e.lots.toLocaleString()} ${e.closeMonth} → ${e.openMonth}`;
-          const spreadCents = (e.openPx != null && e.closePx != null)
-            ? `${e.openPx >= e.closePx ? '+' : ''}${((e.openPx - e.closePx) * 100).toFixed(2)}¢`
-            : '';
+          let desc;
+          if (e.action === 'force-close') {
+            desc = `Force-close ${e.lots.toLocaleString()} ${e.closeMonth} @ $${e.closePx.toFixed(4)}`;
+          } else if (e.action === 'force-roll') {
+            const sd = (e.openPx != null && e.closePx != null)
+              ? ` · ${e.openPx >= e.closePx ? '+' : '-'}$${Math.abs(e.openPx - e.closePx).toFixed(4)}/gal spread`
+              : '';
+            desc = `Force-roll ${e.lots.toLocaleString()} ${e.closeMonth} → ${e.openMonth}${sd}`;
+          } else if (e.action === 'buy-spread' || e.action === 'sell-spread') {
+            const side = e.action === 'buy-spread' ? 'BUY' : 'SELL';
+            const px = (e.price != null) ? (e.price >= 0 ? '+$' + e.price.toFixed(4) : '-$' + Math.abs(e.price).toFixed(4)) : '?';
+            desc = `${side} ${e.lots.toLocaleString()} ${e.frontMonth}-${e.backMonth} @ ${px}`;
+          } else {
+            desc = `${e.action} ${e.lots ? e.lots.toLocaleString() : ''}`;
+          }
           const cls = e.realized > 0 ? 'pos' : (e.realized < 0 ? 'neg' : '');
           rows += `<div class="drow">
             <span class="r">R${e.round}</span>
-            <span class="w">${desc}${spreadCents ? ` <em>· ${spreadCents}</em>` : ''}${e.note ? ` <em>· ${e.note}</em>` : ''}</span>
+            <span class="w">${desc}${e.note ? ` <em>· ${e.note}</em>` : ''}</span>
             <span class="p ${cls}">${fmt$(e.realized)}</span>
           </div>`;
         }
@@ -1064,9 +1166,10 @@ function renderPositions() {
       }
     }
     const rankClass = rank === 0 ? 'rk-1' : (rank === sorted.length - 1 ? 'rk-last' : 'rk');
+    const killBtn = t.human ? `<button class="kill-btn" data-team-kill="${t.id}" data-team-name="${t.name}" title="Remove this team from the game">×</button>` : '';
     html += `<div class="team-pos${isOpen ? ' open' : ''}" data-team="${t.id}">
       <div class="head">
-        <span><span class="rank-pill ${rankClass}">#${rank + 1}</span> <strong>${t.name}</strong> <span class="strat-badge ${STRATEGIES[t.strategy].color}">${STRATEGIES[t.strategy].name}</span></span>
+        <span><span class="rank-pill ${rankClass}">#${rank + 1}</span> <strong>${t.name}</strong> <span class="strat-badge ${STRATEGIES[t.strategy].color}">${STRATEGIES[t.strategy].name}</span>${killBtn}</span>
         <span style="font-size:10px; color:var(--muted);">${isOpen ? '▾ hide trades' : '▸ click for trades'}${isClosed ? ' · all closed' : ''}</span>
       </div>
       <div class="ptiles">${cells}</div>
@@ -1077,7 +1180,7 @@ function renderPositions() {
     </div>`;
   }
   document.getElementById('positionList').innerHTML = html;
-  // Wire click toggles
+  // Wire click toggles for the team cards (expand/collapse)
   document.querySelectorAll('#positionList .team-pos').forEach(el => {
     el.addEventListener('click', () => {
       const id = el.dataset.team;
@@ -1085,20 +1188,66 @@ function renderPositions() {
       renderPositions();
     });
   });
+  // Wire the kill buttons (stop propagation so the parent click doesn't expand the card)
+  document.querySelectorAll('#positionList .kill-btn').forEach(btn => {
+    btn.addEventListener('click', async (ev) => {
+      ev.stopPropagation();
+      const id = btn.dataset.teamKill;
+      const name = btn.dataset.teamName || id;
+      if (!confirm(`Remove team "${name}" from the game?\n\nTheir position and trade log will be deleted. The player can re-join with the same team name to rejoin.`)) return;
+      // Wipe from Firebase
+      if (fbEnabled) {
+        try { await fbDB.ref('teams/' + id).remove(); } catch (e) { console.warn(e); }
+      }
+      // Wipe from local view
+      delete participantTeams[id];
+      // Also remove from same-browser localStorage (in case it's a same-machine test)
+      try { localStorage.removeItem(TEAM_KEY_PREF + id); } catch (e) {}
+      syncParticipantsIntoState();
+      renderPositions();
+      if (state.showScoreboard) renderScoreboard();
+    });
+  });
 }
 
 function renderTradeLog() {
-  const recent = state.tradeLog.slice(-12).reverse();
+  // Aggregate from state.tradeLog (instructor-side, e.g. force-rolls) AND every team's
+  // own tradeLog (participant trades that flowed in via Firebase). De-dup by reference
+  // and sort by round desc, then by stamp desc if present.
+  const seen = new Set();
+  const all = [];
+  for (const e of state.tradeLog) {
+    if (seen.has(e)) continue; seen.add(e);
+    all.push(e);
+  }
+  for (const t of state.teams) {
+    for (const e of (t.tradeLog || [])) {
+      if (seen.has(e)) continue; seen.add(e);
+      // Make sure teamName is present for display
+      all.push({ ...e, teamName: e.teamName || t.name });
+    }
+  }
+  all.sort((a, b) => (b.round - a.round) || ((b.stamp || 0) - (a.stamp || 0)));
+  const recent = all.slice(0, 12);
   if (recent.length === 0) {
-    document.getElementById('tradeLog').innerHTML = '<div style="color:var(--muted); font-size: 12px; text-align:center; padding: 12px;">No trades yet — click "Next round" to advance.</div>';
+    document.getElementById('tradeLog').innerHTML = '<div style="color:var(--muted); font-size: 12px; text-align:center; padding: 12px;">No trades yet — waiting for participants.</div>';
     return;
   }
   let html = '';
   for (const e of recent) {
     const cls = e.realized > 0 ? 'pos' : (e.realized < 0 ? 'neg' : '');
-    const what = e.action === 'force-close'
-      ? `${e.teamName} · force-close ${e.lots} ${e.closeMonth} @ $${e.closePx.toFixed(4)}`
-      : `${e.teamName} · ${e.action === 'force-roll' ? 'FORCE ROLL' : 'roll'} ${e.lots} ${e.closeMonth} → ${e.openMonth} (${e.closePx.toFixed(4)} → ${e.openPx.toFixed(4)})${e.note ? ' · ' + e.note : ''}`;
+    let what;
+    if (e.action === 'force-close') {
+      what = `${e.teamName || ''} · force-close ${e.lots} ${e.closeMonth} @ $${e.closePx.toFixed(4)}`;
+    } else if (e.action === 'force-roll') {
+      what = `${e.teamName || ''} · FORCE ROLL ${e.lots} ${e.closeMonth} → ${e.openMonth} (${e.closePx.toFixed(4)} → ${e.openPx.toFixed(4)})`;
+    } else if (e.action === 'buy-spread' || e.action === 'sell-spread') {
+      const side = e.action === 'buy-spread' ? 'BUY' : 'SELL';
+      const px = (e.price != null) ? (e.price >= 0 ? '+$' + e.price.toFixed(4) : '-$' + Math.abs(e.price).toFixed(4)) : '?';
+      what = `${e.teamName || ''} · ${side} ${e.lots.toLocaleString()} ${e.frontMonth}-${e.backMonth} @ ${px}`;
+    } else {
+      what = `${e.teamName || ''} · ${e.action} ${e.lots ? e.lots.toLocaleString() : ''}${e.note ? ' · ' + e.note : ''}`;
+    }
     html += `<div class="entry"><span class="r">R${e.round}</span><span class="what">${what}</span><span class="pnl ${cls}">${fmt$(e.realized)}</span></div>`;
   }
   document.getElementById('tradeLog').innerHTML = html;
@@ -1217,7 +1366,17 @@ if (fbEnabled) {
 // --- Controls ------------------------------------------------
 document.getElementById('btnNext').onclick = () => { nextRound(); publishWorld(); };
 document.getElementById('btnScoreboard').onclick = () => { state.showScoreboard = !state.showScoreboard; render(); };
-document.getElementById('btnReset').onclick = () => {
+document.getElementById('btnReset').onclick = async () => {
+  const ok = confirm("RESET the game?\n\nThis will zero out every participant's position and trade log and send everyone back to the practice round. Participants will see a fresh start on their screens automatically.\n\nClick OK only if you really want to restart.");
+  if (!ok) return;
+  // Wipe Firebase so participants reset on their next world update
+  if (fbEnabled) {
+    try {
+      await fbDB.ref('teams').remove();
+      await fbDB.ref('world').remove();
+    } catch (e) { console.warn('Firebase reset failed:', e); }
+  }
+  participantTeams = {};
   state = freshState();
   loadExistingParticipants();
   render();

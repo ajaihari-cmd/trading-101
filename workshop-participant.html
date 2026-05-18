@@ -196,6 +196,13 @@
   .modal-card input { width: 100%; font-size: 16px; padding: 10px 12px; margin-bottom: 14px; }
   .modal-card button { width: 100%; padding: 11px; font-size: 14px; }
 
+  /* Big expiry warning banner */
+  .expiry-banner { background: linear-gradient(90deg, #C8102E, #E8442E); color: #ffffff; border-radius: 10px; padding: 10px 14px; margin-bottom: 10px; display: flex; align-items: center; gap: 12px; box-shadow: 0 4px 16px rgba(200,16,46,0.25); font-weight: 700; animation: expiryPulse 1.6s ease-in-out infinite; }
+  .expiry-banner .icon { font-size: 22px; line-height: 1; }
+  .expiry-banner .title { font-size: 14px; letter-spacing: 0.3px; }
+  .expiry-banner .sub { font-size: 11px; font-weight: 500; opacity: 0.92; margin-top: 2px; }
+  @keyframes expiryPulse { 0%, 100% { box-shadow: 0 4px 16px rgba(200,16,46,0.25); } 50% { box-shadow: 0 4px 22px rgba(200,16,46,0.5); } }
+
   /* Status */
   .status-row { display: flex; gap: 8px; align-items: center; font-size: 11px; color: var(--muted); margin-bottom: 6px; }
   .status-row .dot { width: 8px; height: 8px; border-radius: 50%; background: #ccc; }
@@ -212,7 +219,7 @@
     </div>
     <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
       <span class="round-pill">
-        Round <span class="num" id="roundNum">—</span><span class="of">/10</span>
+        <span id="roundLabel">Round</span> <span class="num" id="roundNum">—</span><span class="of" id="roundOf">/10</span>
         <span class="date" id="roundDate">—</span>
       </span>
       <span class="pnl-pill">
@@ -227,6 +234,9 @@
     <span class="dot" id="syncDot"></span>
     <span id="syncStatus">Waiting for instructor…</span>
   </div>
+
+  <!-- Expiry warning banner -->
+  <div id="expirySlot"></div>
 
   <!-- MAIN -->
   <div class="main">
@@ -457,7 +467,19 @@ function onWorld(world) {
   while (teamState.lastSyncedRound < world.round) {
     const leavingRound = teamState.lastSyncedRound;
     const r = world.rounds[leavingRound - 1];
-    if (r.expires) handleExpiry(r.expires, leavingRound, r);
+    if (r && r.practice) {
+      // Leaving practice — wipe positions, P&L, and trade log; start fresh at the new round
+      teamState.lastSyncedRound = leavingRound + 1;
+      const newR = world.rounds[teamState.lastSyncedRound - 1];
+      const startMark = (newR && newR.curve && newR.curve[STARTING_MONTH] != null) ? newR.curve[STARTING_MONTH] : STARTING_ENTRY;
+      teamState.positions = [{ month: STARTING_MONTH, lots: STARTING_LOTS, entry: startMark, side: 'short' }];
+      teamState.realized = 0;
+      teamState.tradeLog = [];
+      undoSnapshot = null;
+      hideTradeToast();
+      continue;
+    }
+    if (r && r.expires) handleExpiry(r.expires, leavingRound, r);
     teamState.lastSyncedRound = leavingRound + 1;
     const newR = world.rounds[teamState.lastSyncedRound - 1];
     if (newR) sweepToMarks(newR);
@@ -540,7 +562,9 @@ function executeTicket(ticket, round, r) {
 }
 
 // Force-roll on expiry: rolls the expiring position (long or short) into the next month
-// at that round's marks.  No bid/ask is charged on administrative force-rolls.
+// at that round's marks AND charges the prevailing spread as P&L (same accounting as
+// voluntary spread trades). Short rolling forward in contango = gain; in backwardation =
+// loss. Long rolling forward is the opposite.
 function handleExpiry(expiringMonth, round, r) {
   const pos = teamState.positions.find(p => p.month === expiringMonth);
   if (!pos) return;
@@ -554,15 +578,20 @@ function handleExpiry(expiringMonth, round, r) {
   const openPx  = r.curve[next];
   const lots = pos.lots;
   const sideDir = pos.side === 'long' ? -1 : 1;
-  const realizedDelta = sideDir * (pos.entry - closePx) * lots * GAL_PER_CONTRACT;
-  teamState.realized += realizedDelta;
+  // Close-leg MTM (≈0 after a sweep but compute defensively)
+  const closeLegMtm = sideDir * (pos.entry - closePx) * lots * GAL_PER_CONTRACT;
+  // Spread P&L from the forced roll. Short gains in contango (openPx > closePx);
+  // loses in backwardation.  Long is opposite.
+  const spreadPnl = sideDir * (openPx - closePx) * lots * GAL_PER_CONTRACT;
+  const tradePnl = closeLegMtm + spreadPnl;
+  teamState.realized += tradePnl;
   teamState.positions = teamState.positions.filter(p => p !== pos);
   applyLeg(next, pos.side, lots, openPx);
   teamState.tradeLog.push({
     round, action: 'force-roll',
     closeMonth: expiringMonth, closePx,
     openMonth: next, openPx,
-    lots, realized: realizedDelta, note: 'expiry (' + pos.side + ')'
+    lots, realized: tradePnl, note: 'expiry (' + pos.side + ')'
   });
 }
 
@@ -718,6 +747,33 @@ function renderSD(world) {
   `;
 }
 
+function renderExpiryBanner(r) {
+  const slot = document.getElementById('expirySlot');
+  if (!slot) return;
+  if (!r || !r.expires) { slot.innerHTML = ''; return; }
+  const m = r.expires;
+  const idx = MONTHS.indexOf(m);
+  const next = MONTHS.slice(idx + 1).find(mo => r.curve[mo] != null);
+  const frontPx = r.curve[m];
+  const backPx = next ? r.curve[next] : null;
+  const spread = (frontPx != null && backPx != null) ? (frontPx - backPx) : null;
+  const spreadTxt = (spread != null)
+    ? `${m}-${next} spread: ${spread >= 0 ? '+' : '-'}$${Math.abs(spread).toFixed(4)}/gal`
+    : '';
+  const haveShort = teamState && teamState.positions && teamState.positions.some(p => p.month === m && p.side === 'short' && p.lots > 0);
+  const haveLong  = teamState && teamState.positions && teamState.positions.some(p => p.month === m && p.side === 'long'  && p.lots > 0);
+  const youHave = haveShort ? `You're SHORT ${m} — roll out before round end!` :
+                  haveLong  ? `You're LONG ${m} — roll out before round end!`  :
+                              `You have no ${m} position — you're fine.`;
+  slot.innerHTML = `<div class="expiry-banner">
+    <span class="icon">⚠️</span>
+    <div>
+      <div class="title">${m} contract expires this round — roll out or get force-rolled</div>
+      <div class="sub">${spreadTxt}${spreadTxt ? ' · ' : ''}${youHave}</div>
+    </div>
+  </div>`;
+}
+
 function renderTradeTicket(r) {
   // Populate month dropdowns with non-expired months
   const tradable = MONTHS.filter(m => r.curve[m] != null);
@@ -865,16 +921,26 @@ function render(world) {
   }
   setStatus(`Live · last sync ${new Date(world.lastUpdate).toLocaleTimeString()}`, true);
   document.getElementById('teamSub').textContent = `Team: ${teamState.name} · started short 1,200 lots JUN HO @ $3.8500`;
-  document.getElementById('roundNum').textContent = world.round;
-  document.getElementById('roundDate').textContent = world.rounds[world.round - 1].date;
-  document.getElementById('newsRound').textContent = world.round;
   const r = world.rounds[world.round - 1];
+  if (r && r.practice) {
+    document.getElementById('roundLabel').textContent = '';
+    document.getElementById('roundNum').textContent = 'Practice';
+    document.getElementById('roundOf').textContent = '';
+    document.getElementById('newsRound').textContent = '0';
+  } else {
+    document.getElementById('roundLabel').textContent = 'Round';
+    document.getElementById('roundNum').textContent = world.round - 1;
+    document.getElementById('roundOf').textContent = '/10';
+    document.getElementById('newsRound').textContent = world.round - 1;
+  }
+  document.getElementById('roundDate').textContent = r.date;
   renderNews(world.rounds[world.round - 1].newsHtml);
   renderCurve(r);
   renderPositions(r);
   renderPnL();
   renderTradeLog();
   renderSD(world);
+  renderExpiryBanner(r);
   renderTradeTicket(r);
   updateQuote(r);
 }
