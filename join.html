@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Trading 101 — Join the Workshop</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --panel: #ffffff;
+    --text: #1a1a1a;
+    --muted: #6b6b6b;
+    --accent: #C8102E;
+    --border: #e2e2e2;
+    --slate: #8a8a92;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; background: var(--bg); color: var(--text); font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 30px 20px; text-align: center; }
+  h1 { font-size: 44px; letter-spacing: -1px; margin: 0 0 6px; }
+  h1 span { color: var(--accent); }
+  .sub { color: var(--muted); margin-bottom: 28px; font-size: 16px; }
+
+  .row { display: flex; flex-direction: column; gap: 22px; align-items: center; justify-content: center; }
+  .qr-card { background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 22px; box-shadow: 0 8px 28px rgba(0,0,0,0.08); display: inline-block; }
+  .qr-card img { display: block; width: 320px; height: 320px; margin: 0 auto; }
+  .qr-card .lbl { font-size: 11px; letter-spacing: 1.5px; color: var(--muted); text-transform: uppercase; font-weight: 700; margin-top: 10px; text-align: center; }
+
+  .or { font-size: 24px; font-weight: 800; color: var(--muted); letter-spacing: 4px; padding: 4px 0; }
+
+  .type-card { background: var(--panel); border: 2px dashed var(--accent); border-radius: 16px; padding: 28px 36px; min-width: 320px; text-align: center; }
+  .type-card .lbl { font-size: 11px; letter-spacing: 1.5px; color: var(--muted); text-transform: uppercase; font-weight: 700; margin-bottom: 12px; }
+  .type-card .url { font-size: 40px; font-weight: 800; color: var(--accent); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: -0.5px; line-height: 1.15; word-break: break-all; }
+  .type-card .hint { font-size: 12px; color: var(--muted); margin-top: 10px; }
+
+  .steps { text-align: left; margin: 40px auto 0; max-width: 720px; background: #f8f8f8; border-radius: 12px; padding: 22px 28px; }
+  .steps h2 { margin: 0 0 12px; font-size: 12px; letter-spacing: 1.5px; color: var(--muted); text-transform: uppercase; }
+  .steps ol { margin: 0; padding-left: 22px; line-height: 1.6; font-size: 14px; }
+  .steps li { margin-bottom: 6px; }
+  .pill { display: inline-block; background: var(--accent); color: #fff; padding: 3px 12px; border-radius: 100px; font-size: 11px; font-weight: 800; letter-spacing: 1px; margin-bottom: 10px; }
+  .footer-note { margin-top: 30px; font-size: 12px; color: var(--muted); }
+  @media (max-width: 800px) {
+    h1 { font-size: 32px; }
+    .row { gap: 16px; }
+    .type-card .url { font-size: 28px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="pill">TRADING 101 WORKSHOP</div>
+  <h1>Scan or <span>type</span> to join</h1>
+  <div class="sub">Pick a team name when prompted — everyone starts short 1,200 JUN heating oil.</div>
+
+  <div class="row">
+    <div class="qr-card">
+      <img id="qrImg" alt="QR code" />
+      <div class="lbl">Scan with your phone</div>
+    </div>
+    <div class="or">— OR —</div>
+    <div class="type-card">
+      <div class="lbl">Type this into your browser</div>
+      <div class="url" id="urlText">—</div>
+      <div class="hint">All lowercase. Works on phone, tablet, or laptop.</div>
+    </div>
+  </div>
+
+  <div class="steps">
+    <h2>How it works</h2>
+    <ol>
+      <li>Visit the URL or scan the QR code on a phone or laptop.</li>
+      <li>Pick a short team name when the popup asks.</li>
+      <li>You start short 1,200 lots JUN heating oil @ $3.8500. Use the trade ticket to roll your short to other months via calendar spreads.</li>
+      <li>Each click executes immediately — a popup confirms, and you can Undo your last trade until the instructor advances the round.</li>
+      <li>10 rounds. Highest MTM P&amp;L wins.</li>
+    </ol>
+  </div>
+
+  <div class="footer-note" id="fullUrl">QR encodes: —</div>
+</div>
+
+<script>
+// ============================================================
+// EDIT THESE TWO LINES once you've hosted the page + made a bitly.
+// ============================================================
+// The full destination URL (what the QR encodes, what users actually load).
+const PARTICIPANT_URL = "https://ajaihari-cmd.github.io/trading-101/workshop-participant.html";
+// What you want DISPLAYED on screen for people to type (shorter, easier).
+// If you don't have a short link yet, just paste the same URL as above.
+const TYPE_THIS       = "ajaihari-cmd.github.io/trading-101";
+// ============================================================
+
+// Render QR via api.qrserver.com — works as a plain <img>, no JS lib needed.
+const qrTarget = PARTICIPANT_URL.startsWith('http') ? PARTICIPANT_URL : ('https://' + PARTICIPANT_URL);
+document.getElementById('qrImg').src =
+  'https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(qrTarget);
+
+document.getElementById('urlText').textContent = TYPE_THIS;
+document.getElementById('fullUrl').textContent = 'QR encodes: ' + qrTarget;
+</script>
+</body>
+</html>

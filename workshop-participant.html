@@ -1,0 +1,996 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Trading 101 — Workshop · Your Team</title>
+<!-- Firebase compat SDK (loads as global `firebase`) -->
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-database-compat.js"></script>
+<script src="firebase-config.js"></script>
+<style>
+  :root {
+    --bg: #ffffff;
+    --panel: #ffffff;
+    --panel-2: #f5f5f5;
+    --text: #1a1a1a;
+    --muted: #6b6b6b;
+    --accent: #C8102E;
+    --accent-soft: #FBE9EB;
+    --buy: #1B7F3A;
+    --sell: #C8102E;
+    --hedged: #1A3A7A;
+    --border: #e2e2e2;
+    --slate: #8a8a92;
+    --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; background: var(--bg); color: var(--text); font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 12px 14px; }
+  h1 { margin: 0 0 2px; font-size: 20px; letter-spacing: -0.5px; }
+  h1 span { color: var(--accent); }
+  .sub { color: var(--muted); margin-bottom: 8px; font-size: 12px; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; box-shadow: var(--shadow); }
+  .panel h2 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 1.3px; color: var(--muted); font-weight: 600; }
+  button { font-family: inherit; font-size: 12px; padding: 7px 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; transition: filter 0.1s; }
+  button:hover:not(:disabled) { filter: brightness(0.95); }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-accent { background: var(--accent); color: #ffffff; }
+  .btn-ghost { background: transparent; color: var(--text); border: 1px solid var(--border); }
+  .btn-slate { background: var(--slate); color: #ffffff; }
+  input, select { font-family: inherit; font-size: 13px; padding: 7px 8px; border: 1px solid var(--border); border-radius: 6px; background: #ffffff; color: var(--text); font-variant-numeric: tabular-nums; }
+
+  /* Header */
+  .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; gap: 10px; flex-wrap: wrap; }
+  .round-pill { background: var(--slate); color: #ffffff; padding: 6px 12px; border-radius: 100px; font-size: 13px; font-weight: 700; display: inline-flex; align-items: center; gap: 8px; }
+  .round-pill .num { font-size: 18px; }
+  .round-pill .of { opacity: 0.7; font-size: 12px; }
+  .round-pill .date { font-size: 14px; font-weight: 800; padding-left: 10px; border-left: 1px solid rgba(255,255,255,0.35); margin-left: 6px; letter-spacing: 0.2px; }
+  .pnl-pill { background: #1a1a1a; color: #ffffff; padding: 6px 14px; border-radius: 100px; font-size: 13px; font-weight: 700; display: inline-flex; align-items: center; gap: 10px; font-variant-numeric: tabular-nums; }
+  .pnl-pill .lbl { font-size: 10px; opacity: 0.7; letter-spacing: 1.2px; text-transform: uppercase; }
+  .pnl-pill .val { font-size: 18px; font-weight: 800; }
+  .pnl-pill .val.pos { color: #5DD58A; }
+  .pnl-pill .val.neg { color: #FF8294; }
+
+  /* Two-col layout */
+  .main { display: grid; grid-template-columns: 1.2fr 1fr; gap: 14px; }
+  @media (max-width: 900px) { .main { grid-template-columns: 1fr; } }
+
+  /* Curve table */
+  .curve-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
+  .curve-cell { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 6px 4px; text-align: center; font-variant-numeric: tabular-nums; }
+  .curve-cell.expired { opacity: 0.3; background: #ebebeb; }
+  .curve-cell.front { background: var(--accent-soft); border-color: var(--accent); }
+  .curve-cell .month { font-size: 10px; letter-spacing: 1px; font-weight: 700; color: var(--muted); }
+  .curve-cell.front .month { color: var(--accent); }
+  .curve-cell .price { font-size: 13px; font-weight: 700; margin-top: 2px; }
+  .curve-cell .spread { font-size: 9px; color: var(--accent); font-weight: 700; margin-top: 2px; min-height: 12px; }
+
+  /* News */
+  .news-slot { min-height: 84px; display: flex; align-items: center; }
+  .news-mock { width: 100%; }
+  /* WSJ */
+  .news-wsj { background:#ffffff; border:1px solid #d0d0d0; box-shadow:0 4px 14px rgba(0,0,0,0.12); border-radius:4px; padding:10px 14px; font-family: Georgia, 'Times New Roman', serif; }
+  .news-wsj .header { display:flex; align-items:center; gap:10px; border-bottom:2px solid #000; padding-bottom:4px; }
+  .news-wsj .logo { font-weight:900; font-size:13px; color:#000; letter-spacing:-0.5px; }
+  .news-wsj .breaking { background:#c8102e; color:#fff; font-size:9px; padding:1px 6px; font-weight:900; letter-spacing:1.5px; }
+  .news-wsj .date { margin-left:auto; font-size:10px; color:#777; font-family:Arial, sans-serif; }
+  .news-wsj .headline { font-weight:900; font-size:16px; margin-top:6px; line-height:1.2; color:#000; }
+  .news-wsj .dek { font-size:11px; color:#555; margin-top:2px; font-family:Arial,sans-serif; }
+  /* Reuters */
+  .news-reuters { background:#000000; color:#ffffff; padding:10px 14px; box-shadow:0 4px 14px rgba(0,0,0,0.18); font-family: Arial, sans-serif; }
+  .news-reuters .header { display:flex; align-items:center; gap:8px; }
+  .news-reuters .logo { background:#fe5000; color:#fff; font-size:10px; padding:2px 8px; font-weight:900; letter-spacing:1px; }
+  .news-reuters .meta { font-size:10px; color:#bbbbbb; letter-spacing:1px; }
+  .news-reuters .live { margin-left:auto; background:#fe5000; color:#fff; font-size:9px; padding:1px 5px; font-weight:900; }
+  .news-reuters .headline { font-size:15px; font-weight:900; margin-top:6px; line-height:1.2; }
+  .news-reuters .dek { font-size:11px; color:#cccccc; margin-top:2px; }
+  /* Bloomberg */
+  .news-bb { background:#000000; color:#ffffff; padding:10px 14px; box-shadow:0 4px 14px rgba(0,0,0,0.18); font-family: 'Helvetica Neue', Arial, sans-serif; }
+  .news-bb .header { display:flex; align-items:center; gap:8px; }
+  .news-bb .logo { background:#FA8E22; color:#000; font-size:10px; padding:2px 8px; font-weight:900; letter-spacing:1.5px; }
+  .news-bb .meta { font-size:10px; color:#bbbbbb; letter-spacing:1px; }
+  .news-bb .headline { font-size:15px; font-weight:900; margin-top:6px; line-height:1.2; }
+  .news-bb .dek { font-size:11px; color:#cccccc; margin-top:2px; }
+  /* EIA */
+  .news-eia { background:#ffffff; border:1px solid #d0d0d0; box-shadow:0 4px 14px rgba(0,0,0,0.12); border-radius:4px; padding:10px 14px; font-family: 'Helvetica Neue', Arial, sans-serif; }
+  .news-eia .header { display:flex; align-items:center; gap:10px; border-bottom:1px solid #e0e0e0; padding-bottom:4px; }
+  .news-eia .logo { background:#003c71; color:#ffffff; font-size:10px; padding:2px 8px; font-weight:900; letter-spacing:1.5px; }
+  .news-eia .title { font-size:12px; font-weight:700; color:#003c71; }
+  .news-eia .when { margin-left:auto; font-size:10px; color:#777; }
+  .news-eia .headline { font-weight:800; font-size:15px; margin-top:6px; line-height:1.2; color:#000; }
+  .news-eia .dek { font-size:11px; color:#555; margin-top:2px; }
+  /* System */
+  .news-system { background: var(--slate); color: #ffffff; padding: 10px 14px; border-radius: 8px; text-align: center; }
+  .news-system .label { font-size:10px; letter-spacing:2px; font-weight:700; opacity:0.85; }
+  .news-system .headline { font-size:15px; font-weight:800; margin-top:4px; }
+  .news-system .dek { font-size:11px; margin-top:2px; opacity:0.9; }
+
+  /* Trade-confirmed toast */
+  .toast { position: fixed; top: 24px; right: 24px; width: 380px; max-width: calc(100vw - 32px); background: #ffffff; border-radius: 12px; box-shadow: 0 16px 48px rgba(0,0,0,0.20); border: 1px solid var(--border); overflow: hidden; z-index: 200; transform: translateX(120%); transition: transform 0.25s ease; }
+  .toast.show { transform: translateX(0); }
+  .toast .t-head { background: var(--buy); color: #ffffff; padding: 10px 14px; font-weight: 800; font-size: 13px; display: flex; align-items: center; gap: 8px; letter-spacing: 0.3px; }
+  .toast .t-head .x { margin-left: auto; cursor: pointer; opacity: 0.8; font-size: 18px; line-height: 1; padding: 0 4px; }
+  .toast .t-head .x:hover { opacity: 1; }
+  .toast .t-body { padding: 12px 14px; }
+  .toast .t-body .summary { font-size: 13px; font-variant-numeric: tabular-nums; margin-bottom: 8px; }
+  .toast .t-body .ptiles { margin-top: 4px; }
+  .toast .t-body .ptile .lots { font-size: 12px; }
+  .toast .t-body .ptile .ent { font-size: 8px; }
+  .toast .t-body .impact { margin-top: 6px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .toast .t-body .impact .pos { color: var(--buy); font-weight: 800; }
+  .toast .t-body .impact .neg { color: var(--accent); font-weight: 800; }
+  .toast .t-actions { padding: 8px 12px; border-top: 1px solid var(--border); background: var(--panel-2); display: flex; gap: 8px; align-items: center; }
+  .toast .t-actions button { padding: 6px 12px; font-size: 12px; font-weight: 700; }
+  .toast .t-actions .t-undo { background: #ffffff; color: var(--accent); border: 1px solid var(--accent); }
+  .toast .t-actions .t-undo:hover { background: var(--accent-soft); }
+  .toast .t-actions .t-note { flex: 1; font-size: 10px; color: var(--muted); }
+  .toast .t-actions .t-dismiss { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+
+  /* Projected position preview */
+  .projected { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); }
+  .projected .ph2 { font-size: 11px; text-transform: uppercase; letter-spacing: 1.3px; color: var(--muted); font-weight: 600; margin: 0 0 5px; }
+  .projected .ph2 .arr { color: var(--accent); font-weight: 800; margin: 0 4px; }
+
+  /* Position tiles */
+  .ptiles { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; font-variant-numeric: tabular-nums; }
+  .ptile { background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 5px 3px 6px; text-align: center; }
+  .ptile .mo { font-size: 10px; letter-spacing: 0.8px; font-weight: 700; color: var(--muted); }
+  .ptile .lots { font-size: 14px; font-weight: 800; color: var(--text); line-height: 1.1; margin-top: 2px; }
+  .ptile .ent { font-size: 9px; color: var(--muted); line-height: 1.1; }
+  .ptile.has-short { background: var(--accent-soft); border-color: var(--accent); }
+  .ptile.has-short .mo { color: var(--accent); }
+  .ptile.has-long { background: rgba(27,127,58,0.10); border-color: var(--buy); }
+  .ptile.has-long .mo { color: var(--buy); }
+  .ptile.empty .lots { color: #cccccc; }
+  .ptile.exp { background: #ebebeb; opacity: 0.5; }
+  .ptile.exp .lots { color: var(--muted); }
+
+  /* Spread trade ticket */
+  .ticket { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; align-items: end; margin-bottom: 8px; }
+  @media (max-width: 600px) { .ticket { grid-template-columns: 1fr; } }
+  .ticket label { font-size: 10px; letter-spacing: 0.8px; color: var(--muted); text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 3px; }
+  .ticket select, .ticket input { width: 100%; }
+  .quote { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: center; }
+  .quote .lbl { font-size: 10px; letter-spacing: 1px; color: var(--muted); text-transform: uppercase; font-weight: 700; }
+  .quote .val { font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.1; margin-top: 2px; }
+  .quote .col { text-align: center; }
+  .quote .col.bid .val { color: var(--buy); }
+  .quote .col.ask .val { color: var(--accent); }
+  .quote .col .sub { font-size: 10px; color: var(--muted); letter-spacing: 0.5px; margin-top: 3px; }
+  .quote.invalid { opacity: 0.4; }
+  .qctx { font-size: 11px; color: var(--muted); margin-top: 6px; font-variant-numeric: tabular-nums; min-height: 14px; }
+  .qctx .err { color: var(--accent); font-weight: 700; }
+  .confirm-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
+  .confirm-row button { font-size: 14px; font-weight: 800; padding: 12px 8px; font-variant-numeric: tabular-nums; }
+  .confirm-row .btn-sell { background: var(--buy); color: #fff; }
+  .confirm-row .btn-buy  { background: var(--accent); color: #fff; }
+  .confirm-row button span { display: block; font-size: 13px; font-weight: 800; margin-top: 2px; }
+  /* Pending basket */
+  .basket { background: #FFF7E6; border: 1px solid #E8A73C; border-radius: 8px; padding: 8px 10px; margin-top: 8px; font-size: 12px; font-variant-numeric: tabular-nums; }
+  .basket .b-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+  .basket .b-head strong { color: #B67923; }
+  .basket .b-row { display: grid; grid-template-columns: auto 1fr auto auto; gap: 8px; padding: 3px 0; border-top: 1px dashed rgba(184,121,35,0.3); align-items: baseline; }
+  .basket .b-row:first-of-type { border-top: none; }
+  .basket .b-row .sd { font-weight: 800; padding: 1px 5px; border-radius: 3px; font-size: 10px; letter-spacing: 0.6px; }
+  .basket .b-row .sd.buy { background: rgba(200,16,46,0.15); color: var(--accent); }
+  .basket .b-row .sd.sell { background: rgba(27,127,58,0.15); color: var(--buy); }
+  .basket .b-row .x { color: var(--accent); cursor: pointer; font-weight: 800; padding: 0 4px; }
+  .basket .b-net { margin-top: 6px; padding-top: 6px; border-top: 1px solid #E8A73C; font-size: 11px; color: #B67923; }
+  .basket .b-foot { margin-top: 6px; display: flex; justify-content: space-between; align-items: center; }
+  .basket .b-foot .info { font-size: 11px; color: #B67923; }
+
+  /* Trade log */
+  .log { max-height: 180px; overflow-y: auto; font-size: 12px; font-variant-numeric: tabular-nums; }
+  .log .entry { padding: 4px 8px; border-bottom: 1px solid var(--border); display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: baseline; }
+  .log .entry .r { font-size: 10px; color: var(--muted); letter-spacing: 1px; }
+  .log .entry .what { color: var(--text); }
+  .log .entry .pnl { font-weight: 700; }
+  .log .entry .pnl.pos { color: var(--buy); }
+  .log .entry .pnl.neg { color: var(--sell); }
+
+  /* Name entry modal */
+  .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 100; }
+  .modal-card { background: #ffffff; padding: 28px 32px; border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); max-width: 420px; width: 90%; }
+  .modal-card h2 { margin: 0 0 8px; font-size: 22px; }
+  .modal-card p { margin: 0 0 18px; color: var(--muted); font-size: 13px; line-height: 1.4; }
+  .modal-card input { width: 100%; font-size: 16px; padding: 10px 12px; margin-bottom: 14px; }
+  .modal-card button { width: 100%; padding: 11px; font-size: 14px; }
+
+  /* Status */
+  .status-row { display: flex; gap: 8px; align-items: center; font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+  .status-row .dot { width: 8px; height: 8px; border-radius: 50%; background: #ccc; }
+  .status-row .dot.live { background: #1B7F3A; box-shadow: 0 0 6px rgba(27,127,58,0.5); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <!-- HEADER -->
+  <div class="header-row">
+    <div>
+      <h1>Trading 101 — <span>Your Team</span></h1>
+      <div class="sub" id="teamSub">Loading…</div>
+    </div>
+    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+      <span class="round-pill">
+        Round <span class="num" id="roundNum">—</span><span class="of">/10</span>
+        <span class="date" id="roundDate">—</span>
+      </span>
+      <span class="pnl-pill">
+        <span class="lbl">MTM P&amp;L</span>
+        <span class="val" id="pnlVal">$0</span>
+      </span>
+      <button class="btn-ghost" id="btnRename">Rename</button>
+    </div>
+  </div>
+
+  <div class="status-row">
+    <span class="dot" id="syncDot"></span>
+    <span id="syncStatus">Waiting for instructor…</span>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main">
+    <!-- LEFT -->
+    <div>
+      <div class="panel">
+        <h2>News flash · Round <span id="newsRound">—</span></h2>
+        <div class="news-slot" id="newsSlot"></div>
+      </div>
+
+      <div class="panel">
+        <h2>NYMEX HO forward curve</h2>
+        <div class="curve-row" id="curveRow"></div>
+        <div style="font-size: 10px; color: var(--muted); margin-top: 4px; text-align: center;">
+          Spreads vs. front month. <span style="color:var(--accent);">Red</span> = backwardation, <span style="color:var(--buy);">green</span> = contango.
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Distillate stocks · 5-year range vs. current year</h2>
+        <svg id="sdChart" viewBox="0 0 720 170" style="width:100%; height:auto; display:block;"></svg>
+        <div id="sdAnnotation" style="display:flex; justify-content:space-between; align-items:baseline; margin-top:4px; font-size:11px; color:var(--muted);"></div>
+      </div>
+    </div>
+
+    <!-- RIGHT -->
+    <div>
+      <div class="panel">
+        <h2>Your position</h2>
+        <div class="ptiles" id="positionTiles"></div>
+      </div>
+
+      <div class="panel">
+        <h2>Trade ticket · calendar spreads · $/gallon</h2>
+        <div class="ticket">
+          <div>
+            <label>Front month</label>
+            <select id="frontMonth"></select>
+          </div>
+          <div>
+            <label>Back month</label>
+            <select id="backMonth"></select>
+          </div>
+          <div>
+            <label>Lots (×100)</label>
+            <input type="number" id="lots" min="100" step="100" value="1200" />
+          </div>
+        </div>
+        <div class="quote" id="quoteBox">
+          <div class="col bid"><div class="lbl">Bid</div><div class="val" id="qBid">—</div><div class="sub">sell spread here</div></div>
+          <div class="col ask"><div class="lbl">Ask</div><div class="val" id="qAsk">—</div><div class="sub">buy spread here</div></div>
+        </div>
+        <div class="qctx" id="ticketCtx"></div>
+        <div class="confirm-row">
+          <button class="btn-sell" id="btnSell" disabled>Sell at bid <span id="sellPx">—</span></button>
+          <button class="btn-buy"  id="btnBuy"  disabled>Buy at ask <span id="buyPx">—</span></button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Your trades</h2>
+        <div class="log" id="tradeLog"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Trade confirmation toast -->
+<div class="toast" id="tradeToast">
+  <div class="t-head">
+    <span>✓ Trade confirmed</span>
+    <span class="x" id="toastX">×</span>
+  </div>
+  <div class="t-body">
+    <div class="summary" id="toastSummary"></div>
+    <div class="ptiles" id="toastTiles"></div>
+    <div class="impact" id="toastImpact"></div>
+  </div>
+  <div class="t-actions">
+    <button class="t-undo" id="toastUndo">Undo this trade</button>
+    <span class="t-note">Undo expires on next trade or round advance.</span>
+    <button class="t-dismiss" id="toastDismiss">Dismiss</button>
+  </div>
+</div>
+
+<!-- Name entry modal -->
+<div class="modal" id="nameModal" style="display:none;">
+  <div class="modal-card">
+    <h2>What's your team name?</h2>
+    <p>Pick something short — it'll show up on the instructor's screen next to the demo teams. (Stored on this device only.)</p>
+    <input type="text" id="nameInput" placeholder="e.g. Bulls, Carbon Squad, Table 3" maxlength="24" />
+    <button class="btn-accent" id="btnNameSubmit">Join workshop</button>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// TRADING 101 — PARTICIPANT TRADE SCREEN
+// ============================================================
+const GAL_PER_CONTRACT = 42000;
+const MONTHS = ['JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+const STARTING_LOTS = 1200;
+const STARTING_MONTH = 'JUN';
+const STARTING_ENTRY = 3.8500;
+
+// --- Sync layer -------------------------------------------------------------
+// Default backend: Firebase Realtime DB (cross-device).  Falls back to
+// localStorage + BroadcastChannel if firebase-config.js still has placeholder values.
+const TEAM_ID_KEY    = 'workshop:teamId';
+const TEAM_NAME_KEY  = 'workshop:teamName';
+const TEAM_STATE_KEY = (id) => 'workshop:team:' + id;
+const WORLD_KEY      = 'workshop:world';
+const bc = (typeof BroadcastChannel !== 'undefined') ? new BroadcastChannel('workshop') : null;
+
+let fbDB = null;
+let fbEnabled = false;
+(function initFirebase() {
+  try {
+    const cfg = window.firebaseConfig;
+    if (!cfg || !cfg.apiKey || cfg.apiKey === 'PASTE_API_KEY_HERE') return;
+    firebase.initializeApp(cfg);
+    fbDB = firebase.database();
+    fbEnabled = true;
+    console.log('Firebase enabled — cross-device sync active.');
+  } catch (e) {
+    console.warn('Firebase init failed, falling back to local sync:', e);
+  }
+})();
+
+function genTeamId() {
+  return 'p_' + Math.random().toString(36).slice(2, 8);
+}
+
+// Latest world payload received via any channel — Firebase or localStorage
+let cachedWorld = null;
+function readWorld() {
+  if (cachedWorld) return cachedWorld;
+  try {
+    const raw = localStorage.getItem(WORLD_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) { return null; }
+}
+
+function publishTeam() {
+  if (!teamState) return;
+  const payload = { ...teamState, lastUpdate: Date.now() };
+  // Local fallback
+  localStorage.setItem(TEAM_STATE_KEY(teamState.id), JSON.stringify(payload));
+  if (bc) bc.postMessage({ type: 'team', team: payload });
+  // Cross-device
+  if (fbEnabled) fbDB.ref('teams/' + teamState.id).set(payload).catch(e => console.warn('Firebase team write failed:', e));
+}
+
+// --- Team state ---
+// Holds positions, realized P&L, trade log, pending trade for this participant.
+let teamState = null;
+
+function freshTeamState(id, name) {
+  return {
+    id,
+    name,
+    positions: [{ month: STARTING_MONTH, lots: STARTING_LOTS, entry: STARTING_ENTRY, side: 'short' }],
+    realized: 0,
+    tradeLog: [],
+    lastSyncedRound: 0,
+    human: true
+  };
+}
+
+// Calendar-spread bid/ask widens with both leg distance (illiquidity over time) and
+// trade size (market impact). Calibrated so a 1,200-lot front-month roll shows at least
+// $0.0150 wide. Half-spread =  $0.0025 × distance  +  $0.0050 × (lots / 1,200).
+function spreadQuote(frontMark, backMark, distance, lots) {
+  const mid = +(frontMark - backMark).toFixed(4);
+  const d = Math.max(1, distance || 1);
+  const l = Math.max(100, lots || 1200);
+  const half = 0.0025 * d + 0.0050 * (l / 1200);
+  return {
+    mid,
+    bid: +(mid - half).toFixed(4),
+    ask: +(mid + half).toFixed(4),
+    half,
+    distance: d,
+    lots: l
+  };
+}
+function monthDistance(frontMonth, backMonth) {
+  return MONTHS.indexOf(backMonth) - MONTHS.indexOf(frontMonth);
+}
+// $/gallon, 4 dp, with explicit sign for spread differentials.
+function fmtUsd(d) {
+  if (d < 0) return '-$' + Math.abs(d).toFixed(4);
+  return '$' + d.toFixed(4);
+}
+function fmtUsdSigned(d) {
+  if (d > 0) return '+$' + d.toFixed(4);
+  if (d < 0) return '-$' + Math.abs(d).toFixed(4);
+  return '$0.0000';
+}
+function fmtCents(dollars) {
+  const cents = dollars * 100;
+  const sign = cents >= 0 ? '+' : '−';
+  return `${sign}${Math.abs(cents).toFixed(2)}¢`;
+}
+
+// --- Sync: receive world updates from instructor ---
+function onWorld(world) {
+  if (!world || !teamState) return;
+  // Apply any round transitions we haven't seen yet.
+  // For each new round, do: (1) execute pending trade if any at the leaving round's marks,
+  // (2) force-roll expiries, (3) advance, (4) sweep MTM to new marks.
+  // Fresh team (lastSyncedRound = 0) or rewind detected: reset to a clean R1 start.
+  // Setting lastSyncedRound = 1 means "we're synced AT R1, with no transitions to process".
+  if (teamState.lastSyncedRound === 0 || teamState.lastSyncedRound > world.round) {
+    const r1 = world.rounds[0];
+    const startingEntry = (r1 && r1.curve && r1.curve[STARTING_MONTH] != null) ? r1.curve[STARTING_MONTH] : STARTING_ENTRY;
+    teamState.positions = [{ month: STARTING_MONTH, lots: STARTING_LOTS, entry: startingEntry, side: 'short' }];
+    teamState.realized = 0;
+    teamState.tradeLog = [];
+    teamState.lastSyncedRound = 1;
+    undoSnapshot = null;
+    hideTradeToast();
+  } else if (teamState.lastSyncedRound < world.round) {
+    undoSnapshot = null;
+    hideTradeToast();
+  }
+  // Process each R→R+1 transition between lastSyncedRound and world.round
+  while (teamState.lastSyncedRound < world.round) {
+    const leavingRound = teamState.lastSyncedRound;
+    const r = world.rounds[leavingRound - 1];
+    if (r.expires) handleExpiry(r.expires, leavingRound, r);
+    teamState.lastSyncedRound = leavingRound + 1;
+    const newR = world.rounds[teamState.lastSyncedRound - 1];
+    if (newR) sweepToMarks(newR);
+  }
+  // Final-round force close
+  const finalR = world.rounds[world.round - 1];
+  if (finalR && finalR.forceClose) {
+    for (const p of teamState.positions.slice()) {
+      const px = finalR.curve[p.month];
+      if (px == null) continue;
+      teamState.tradeLog.push({
+        round: world.round, action: 'force-close',
+        closeMonth: p.month, closePx: px,
+        openMonth: null, openPx: null,
+        lots: p.lots, spreadPnl: 0, realized: 0, note: 'game over'
+      });
+    }
+    teamState.positions = [];
+  }
+  publishTeam();
+  render(world);
+}
+
+// Apply one leg of a spread trade.  Same-side adds to position (weighted-avg entry);
+// opposite-side nets out (and flips sign if `lots` exceeds the existing position).
+// All legs trade at the round's mark, so no realized P&L is booked here — the spread
+// bid/ask is captured separately by the caller.
+function applyLeg(month, side, lots, mark) {
+  const pos = teamState.positions.find(p => p.month === month);
+  if (!pos) {
+    teamState.positions.push({ month, lots, entry: mark, side });
+    return;
+  }
+  if (pos.side === side) {
+    const total = pos.lots + lots;
+    pos.entry = (pos.entry * pos.lots + mark * lots) / total;
+    pos.lots = total;
+    return;
+  }
+  // Opposite side: net out at the current mark (entries are already at mark, so no P&L)
+  if (pos.lots > lots) {
+    pos.lots -= lots;
+  } else if (pos.lots === lots) {
+    teamState.positions = teamState.positions.filter(p => p !== pos);
+  } else {
+    const remainder = lots - pos.lots;
+    teamState.positions = teamState.positions.filter(p => p !== pos);
+    teamState.positions.push({ month, lots: remainder, entry: mark, side });
+  }
+}
+
+// Execute one spread ticket.  Buy spread = long front + short back.  Sell spread = short
+// front + long back.  No prior position required — the trade puts on the spread freely.
+function executeTicket(ticket, round, r) {
+  const { side, frontMonth, backMonth, lots, price } = ticket;
+  const frontMark = r.curve[frontMonth];
+  const backMark  = r.curve[backMonth];
+  if (frontMark == null || backMark == null) {
+    teamState.tradeLog.push({ round, action: side + '-spread-rejected', frontMonth, backMonth, lots, price, realized: 0, note: 'leg expired' });
+    return;
+  }
+  // P&L from the spread trade.  Buy spread at ask → P&L = −ask × lots × gal (negative
+  // spread → positive P&L).  Sell spread at bid → P&L = +bid × lots × gal.
+  const spreadPnl = (side === 'buy' ? -price : price) * lots * GAL_PER_CONTRACT;
+  teamState.realized += spreadPnl;
+
+  const frontSide = (side === 'buy') ? 'long' : 'short';
+  const backSide  = (side === 'buy') ? 'short' : 'long';
+  applyLeg(frontMonth, frontSide, lots, frontMark);
+  applyLeg(backMonth,  backSide,  lots, backMark);
+
+  teamState.tradeLog.push({
+    round,
+    action: side + '-spread',
+    frontMonth, backMonth, lots, price,
+    spreadCents: +(price * 100).toFixed(2),
+    realized: spreadPnl,
+    note: ticket.note || ''
+  });
+}
+
+// Force-roll on expiry: rolls the expiring position (long or short) into the next month
+// at that round's marks.  No bid/ask is charged on administrative force-rolls.
+function handleExpiry(expiringMonth, round, r) {
+  const pos = teamState.positions.find(p => p.month === expiringMonth);
+  if (!pos) return;
+  const idx = MONTHS.indexOf(expiringMonth);
+  let next = null;
+  for (let j = idx + 1; j < MONTHS.length; j++) {
+    if (r.curve[MONTHS[j]] != null) { next = MONTHS[j]; break; }
+  }
+  if (!next) return;
+  const closePx = r.curve[expiringMonth];
+  const openPx  = r.curve[next];
+  const lots = pos.lots;
+  const sideDir = pos.side === 'long' ? -1 : 1;
+  const realizedDelta = sideDir * (pos.entry - closePx) * lots * GAL_PER_CONTRACT;
+  teamState.realized += realizedDelta;
+  teamState.positions = teamState.positions.filter(p => p !== pos);
+  applyLeg(next, pos.side, lots, openPx);
+  teamState.tradeLog.push({
+    round, action: 'force-roll',
+    closeMonth: expiringMonth, closePx,
+    openMonth: next, openPx,
+    lots, realized: realizedDelta, note: 'expiry (' + pos.side + ')'
+  });
+}
+
+function sweepToMarks(r) {
+  for (const p of teamState.positions) {
+    const mark = r.curve[p.month];
+    if (mark == null) continue;
+    const sideDir = p.side === 'long' ? -1 : 1;
+    const mtmDelta = sideDir * (p.entry - mark) * p.lots * GAL_PER_CONTRACT;
+    teamState.realized += mtmDelta;
+    p.entry = mark;
+  }
+}
+
+// --- Rendering ---
+function fmt$(x) {
+  if (x === 0 || x == null) return '$0';
+  const sign = x < 0 ? '−' : '+';
+  return sign + '$' + Math.abs(Math.round(x)).toLocaleString('en-US');
+}
+
+function renderNews(html) {
+  document.getElementById('newsSlot').innerHTML = html || '<div class="news-mock news-system"><div class="headline">Waiting for the next round…</div></div>';
+}
+
+function renderCurve(r) {
+  const front = MONTHS.find(m => r.curve[m] != null);
+  let html = '';
+  for (const m of MONTHS) {
+    const px = r.curve[m];
+    if (px == null) {
+      html += `<div class="curve-cell expired"><div class="month">${m}</div><div class="price">—</div><div class="spread">expired</div></div>`;
+      continue;
+    }
+    const isFront = m === front;
+    const spreadTxt = (m === front) ? '' : (() => {
+      const d = px - r.curve[front];
+      if (Math.abs(d) < 0.0001) return 'flat';
+      const sign = d > 0 ? '+' : '−';
+      const cents = Math.round(Math.abs(d) * 100);
+      const color = d > 0 ? 'color: var(--buy);' : 'color: var(--accent);';
+      return `<span style="${color}">${sign}${cents}¢</span>`;
+    })();
+    html += `<div class="curve-cell ${isFront ? 'front' : ''}">
+      <div class="month">${m}</div>
+      <div class="price">$${px.toFixed(4)}</div>
+      <div class="spread">${spreadTxt}</div>
+    </div>`;
+  }
+  document.getElementById('curveRow').innerHTML = html;
+}
+
+function renderPositions(r) {
+  const byMonth = {};
+  for (const p of teamState.positions) byMonth[p.month] = p;
+  let html = '';
+  for (const m of MONTHS) {
+    const expired = (r.curve[m] == null);
+    const p = byMonth[m];
+    if (p) {
+      const cls = p.side === 'long' ? 'has-long' : 'has-short';
+      const signedLots = (p.side === 'long' ? '+' : '−') + p.lots.toLocaleString();
+      html += `<div class="ptile ${cls}"><div class="mo">${m}</div><div class="lots">${signedLots}</div><div class="ent">@ $${p.entry.toFixed(4)}</div></div>`;
+    } else {
+      html += `<div class="ptile ${expired ? 'exp' : 'empty'}"><div class="mo">${m}</div><div class="lots">—</div><div class="ent">${expired ? 'expired' : ''}</div></div>`;
+    }
+  }
+  document.getElementById('positionTiles').innerHTML = html;
+}
+
+function renderPnL() {
+  const mtm = teamState.realized; // unrealized is 0 after sweep
+  const cls = mtm > 0 ? 'pos' : (mtm < 0 ? 'neg' : '');
+  const el = document.getElementById('pnlVal');
+  el.textContent = fmt$(mtm);
+  el.className = 'val ' + cls;
+}
+
+function renderTradeLog() {
+  const entries = teamState.tradeLog.slice().reverse();
+  if (entries.length === 0) {
+    document.getElementById('tradeLog').innerHTML = '<div style="color:var(--muted); font-size:12px; text-align:center; padding:12px;">No trades yet.</div>';
+    return;
+  }
+  let html = '';
+  for (const e of entries) {
+    const cls = e.realized > 0 ? 'pos' : (e.realized < 0 ? 'neg' : '');
+    let what;
+    if (e.action === 'force-close') {
+      what = `Force-close ${e.lots.toLocaleString()} ${e.closeMonth} @ $${e.closePx.toFixed(4)}`;
+    } else if (e.action === 'force-roll') {
+      what = `Force-roll ${e.lots.toLocaleString()} ${e.closeMonth} → ${e.openMonth} ($${e.closePx.toFixed(4)} → $${e.openPx.toFixed(4)})${e.note ? ' · ' + e.note : ''}`;
+    } else if (e.action === 'buy-spread' || e.action === 'sell-spread') {
+      const side = e.action === 'buy-spread' ? 'BUY' : 'SELL';
+      what = `${side} spread ${e.lots.toLocaleString()} ${e.frontMonth}-${e.backMonth} @ ${fmtUsdSigned(e.price)}${e.note ? ' · ' + e.note : ''}`;
+    } else if (e.action === 'buy-spread-rejected' || e.action === 'sell-spread-rejected') {
+      what = `Rejected: ${e.action.replace('-rejected', '')} ${e.lots.toLocaleString()} ${e.frontMonth}-${e.backMonth}${e.note ? ' · ' + e.note : ''}`;
+    } else {
+      what = `${e.action} ${e.lots || ''} ${e.month || e.frontMonth || ''}${e.note ? ' · ' + e.note : ''}`;
+    }
+    html += `<div class="entry"><span class="r">R${e.round}</span><span class="what">${what}</span><span class="pnl ${cls}">${fmt$(e.realized)}</span></div>`;
+  }
+  document.getElementById('tradeLog').innerHTML = html;
+}
+
+function renderSD(world) {
+  const W = 720, H = 170;
+  const padL = 48, padR = 14, padT = 14, padB = 26;
+  const innerW = W - padL - padR;
+  const innerH = H - padT - padB;
+  const yMin = 95, yMax = 200;
+  const xOf = (i) => padL + (i / 11) * innerW;
+  const yOf = (v) => padT + (1 - (v - yMin) / (yMax - yMin)) * innerH;
+  const sd = world.sd;
+  let svg = '';
+  for (const v of [100, 130, 160, 190]) {
+    const y = yOf(v);
+    svg += `<line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="#eeeeee" stroke-width="1"/>`;
+    svg += `<text x="${padL - 6}" y="${y + 3}" text-anchor="end" font-size="10" fill="#6b6b6b" font-variant-numeric="tabular-nums">${v}M</text>`;
+  }
+  // 5-yr envelope
+  const topPath = sd.fiveYearMax.map((v, i) => `${i === 0 ? 'M' : 'L'}${xOf(i)},${yOf(v)}`).join(' ');
+  const botPath = sd.fiveYearMin.slice().reverse().map((v, k) => `L${xOf(11 - k)},${yOf(v)}`).join(' ');
+  svg += `<path d="${topPath} ${botPath} Z" fill="#e2e2e2" opacity="0.7"/>`;
+  svg += `<polyline points="${sd.fiveYearMax.map((v, i) => xOf(i) + ',' + yOf(v)).join(' ')}" fill="none" stroke="#bbbbbb" stroke-width="1"/>`;
+  svg += `<polyline points="${sd.fiveYearMin.map((v, i) => xOf(i) + ',' + yOf(v)).join(' ')}" fill="none" stroke="#bbbbbb" stroke-width="1"/>`;
+  svg += `<polyline points="${sd.fiveYearAvg.map((v, i) => xOf(i) + ',' + yOf(v)).join(' ')}" fill="none" stroke="#6b6b6b" stroke-width="1.5" stroke-dasharray="4,3"/>`;
+  const curMonthIdx = world.roundToMonth[world.round] || 0;
+  const currentPts = sd.currentYear.slice(0, curMonthIdx + 1).map((v, i) => xOf(i) + ',' + yOf(v)).join(' ');
+  svg += `<polyline points="${currentPts}" fill="none" stroke="#C8102E" stroke-width="2.8" stroke-linejoin="round"/>`;
+  for (let i = 0; i <= curMonthIdx; i++) {
+    svg += `<circle cx="${xOf(i)}" cy="${yOf(sd.currentYear[i])}" r="3" fill="#C8102E"/>`;
+  }
+  const curVal = sd.currentYear[curMonthIdx];
+  svg += `<circle cx="${xOf(curMonthIdx)}" cy="${yOf(curVal)}" r="5" fill="#C8102E" stroke="#ffffff" stroke-width="2"/>`;
+  svg += `<text x="${xOf(curMonthIdx)}" y="${yOf(curVal) - 10}" text-anchor="middle" font-size="11" font-weight="800" fill="#C8102E" font-variant-numeric="tabular-nums">${curVal}M</text>`;
+  sd.months.forEach((m, i) => {
+    const cur = (i === curMonthIdx);
+    svg += `<text x="${xOf(i)}" y="${H - padB + 14}" text-anchor="middle" font-size="10" fill="${cur ? '#C8102E' : '#6b6b6b'}" font-weight="${cur ? '800' : '700'}">${m}</text>`;
+  });
+  svg += `<text x="14" y="${padT + innerH/2}" transform="rotate(-90, 14, ${padT + innerH/2})" text-anchor="middle" font-size="10" fill="#6b6b6b">M bbl on hand</text>`;
+  document.getElementById('sdChart').innerHTML = svg;
+  const avg = sd.fiveYearAvg[curMonthIdx];
+  const delta = curVal - avg;
+  const deltaTxt = delta > 0 ? `+${delta}M above 5-yr avg` : `${delta}M below 5-yr avg`;
+  const deltaColor = delta > 0 ? 'var(--accent)' : 'var(--buy)';
+  let zoneTxt = '';
+  if (curVal >= sd.fiveYearMax[curMonthIdx]) zoneTxt = 'at/above 5-yr MAX';
+  else if (curVal <= sd.fiveYearMin[curMonthIdx]) zoneTxt = 'at/below 5-yr MIN';
+  else zoneTxt = 'inside 5-yr range';
+  document.getElementById('sdAnnotation').innerHTML = `
+    <span><strong>${sd.months[curMonthIdx]}:</strong> <strong style="color:var(--text);">${curVal}M bbl</strong> · <span style="color:${deltaColor};">${deltaTxt}</span> · ${zoneTxt}</span>
+  `;
+}
+
+function renderTradeTicket(r) {
+  // Populate month dropdowns with non-expired months
+  const tradable = MONTHS.filter(m => r.curve[m] != null);
+  const frontSel = document.getElementById('frontMonth');
+  const backSel  = document.getElementById('backMonth');
+  const prevFront = frontSel.value, prevBack = backSel.value;
+  frontSel.innerHTML = tradable.map(m => `<option value="${m}">${m}</option>`).join('');
+  backSel.innerHTML  = tradable.map(m => `<option value="${m}">${m}</option>`).join('');
+  // Restore prior selection or default to front=first held month, back=last tradable
+  const held = teamState.positions.map(p => p.month).filter(m => r.curve[m] != null);
+  frontSel.value = tradable.includes(prevFront) ? prevFront : (held[0] || tradable[0]);
+  backSel.value  = tradable.includes(prevBack) && prevBack !== frontSel.value ? prevBack : (tradable[tradable.length - 1] === frontSel.value ? tradable[tradable.length - 2] : tradable[tradable.length - 1]);
+  updateQuote(r);
+}
+
+function updateQuote(r) {
+  const fm = document.getElementById('frontMonth').value;
+  const bm = document.getElementById('backMonth').value;
+  const lotsInput = document.getElementById('lots');
+  // Snap lots to nearest 100
+  let lots = parseInt(lotsInput.value, 10) || 0;
+  if (lots < 100) lots = 100;
+  lots = Math.round(lots / 100) * 100;
+  if (parseInt(lotsInput.value, 10) !== lots) lotsInput.value = lots;
+  const qBid = document.getElementById('qBid');
+  const qAsk = document.getElementById('qAsk');
+  const ctx = document.getElementById('ticketCtx');
+  const quoteBox = document.getElementById('quoteBox');
+  const btnSell = document.getElementById('btnSell');
+  const btnBuy  = document.getElementById('btnBuy');
+  const sellPx = document.getElementById('sellPx');
+  const buyPx  = document.getElementById('buyPx');
+
+  if (!fm || !bm || fm === bm || MONTHS.indexOf(fm) >= MONTHS.indexOf(bm)) {
+    qBid.textContent = '—'; qAsk.textContent = '—';
+    sellPx.textContent = '—'; buyPx.textContent = '—';
+    quoteBox.classList.add('invalid');
+    btnSell.disabled = true; btnBuy.disabled = true;
+    ctx.innerHTML = '<span class="err">Pick a front and back month (front must be earlier).</span>';
+    return;
+  }
+  quoteBox.classList.remove('invalid');
+  const fMark = r.curve[fm], bMark = r.curve[bm];
+  const dist = monthDistance(fm, bm);
+  const q = spreadQuote(fMark, bMark, dist, lots);
+  qBid.textContent = fmtUsdSigned(q.bid);
+  qAsk.textContent = fmtUsdSigned(q.ask);
+  sellPx.textContent = fmtUsdSigned(q.bid);
+  buyPx.textContent  = fmtUsdSigned(q.ask);
+
+  const sellPnl = (+q.bid) * lots * GAL_PER_CONTRACT;
+  const buyPnl  = (-q.ask) * lots * GAL_PER_CONTRACT;
+  const fmtPnl = (x) => (x > 0 ? '+$' : '−$') + Math.abs(Math.round(x)).toLocaleString();
+  ctx.innerHTML = `${fm}/${bm} · ${dist}-mo spread · ${lots.toLocaleString()} lots · ${(q.half * 2).toFixed(4)} wide  ·  Sell MTM <strong style="color:${sellPnl>0?'var(--buy)':'var(--accent)'}">${fmtPnl(sellPnl)}</strong> · Buy MTM <strong style="color:${buyPnl>0?'var(--buy)':'var(--accent)'}">${fmtPnl(buyPnl)}</strong>`;
+
+  btnSell.disabled = false; btnBuy.disabled = false;
+  btnSell.onclick = () => commitTicket('sell', fm, bm, lots, q.bid, r);
+  btnBuy.onclick  = () => commitTicket('buy',  fm, bm, lots, q.ask, r);
+}
+
+// Immediate trade execution.  Saves an undo snapshot, fires the trade right now,
+// updates positions/P&L/log, publishes to the instructor, and pops the confirmation toast.
+let undoSnapshot = null;
+let toastTimer = null;
+
+function commitTicket(side, fm, bm, lots, price, r) {
+  const world = readWorld();
+  if (!world) return;
+  // Snapshot current state for undo
+  undoSnapshot = {
+    positions: teamState.positions.map(p => ({ ...p })),
+    realized: teamState.realized,
+    logLen: teamState.tradeLog.length
+  };
+  // Execute the trade right now at the current round's marks
+  executeTicket({ side, frontMonth: fm, backMonth: bm, lots, price, note: 'human' }, world.round, r);
+  publishTeam();
+  // Re-render the live UI (positions, P&L, blotter)
+  render(world);
+  // Pop the toast
+  showTradeToast({ side, frontMonth: fm, backMonth: bm, lots, price }, r);
+}
+
+function showTradeToast(trade, r) {
+  const sideTxt = trade.side === 'buy' ? 'BUY' : 'SELL';
+  const sideColor = trade.side === 'buy' ? 'var(--accent)' : 'var(--buy)';
+  document.getElementById('toastSummary').innerHTML =
+    `<strong style="color:${sideColor};">${sideTxt}</strong> ${trade.lots.toLocaleString()} ${trade.frontMonth}-${trade.backMonth} spread @ <strong>${fmtUsdSigned(trade.price)}</strong>`;
+  // Compact position tiles inside the toast
+  const byMonth = {};
+  for (const p of teamState.positions) byMonth[p.month] = p;
+  let tiles = '';
+  for (const m of MONTHS) {
+    const expired = (r.curve[m] == null);
+    const p = byMonth[m];
+    if (p) {
+      const cls = p.side === 'long' ? 'has-long' : 'has-short';
+      const sign = p.side === 'long' ? '+' : '−';
+      tiles += `<div class="ptile ${cls}"><div class="mo">${m}</div><div class="lots">${sign}${p.lots.toLocaleString()}</div><div class="ent">@ ${p.entry.toFixed(4)}</div></div>`;
+    } else {
+      tiles += `<div class="ptile ${expired ? 'exp' : 'empty'}"><div class="mo">${m}</div><div class="lots">—</div><div class="ent"></div></div>`;
+    }
+  }
+  document.getElementById('toastTiles').innerHTML = tiles;
+  // MTM impact for this trade
+  const pnl = (trade.side === 'buy' ? -trade.price : trade.price) * trade.lots * GAL_PER_CONTRACT;
+  const pnlSign = pnl > 0 ? '+' : '−';
+  const pnlCls = pnl > 0 ? 'pos' : (pnl < 0 ? 'neg' : '');
+  document.getElementById('toastImpact').innerHTML =
+    `Trade MTM: <span class="${pnlCls}">${pnlSign}$${Math.abs(Math.round(pnl)).toLocaleString()}</span> · Total MTM: <strong>${fmt$(teamState.realized)}</strong>`;
+  // Show + arm auto-dismiss
+  const t = document.getElementById('tradeToast');
+  t.classList.add('show');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(hideTradeToast, 12000);
+}
+
+function hideTradeToast() {
+  document.getElementById('tradeToast').classList.remove('show');
+  if (toastTimer) { clearTimeout(toastTimer); toastTimer = null; }
+}
+
+function undoLastTrade() {
+  if (!undoSnapshot) return;
+  teamState.positions = undoSnapshot.positions;
+  teamState.realized = undoSnapshot.realized;
+  teamState.tradeLog.length = undoSnapshot.logLen;
+  undoSnapshot = null;
+  publishTeam();
+  hideTradeToast();
+  const w = readWorld();
+  if (w) render(w);
+}
+
+
+function setStatus(text, live) {
+  document.getElementById('syncStatus').textContent = text;
+  document.getElementById('syncDot').classList.toggle('live', !!live);
+}
+
+function render(world) {
+  if (!world) {
+    setStatus('Waiting for instructor to open the workshop…', false);
+    return;
+  }
+  setStatus(`Live · last sync ${new Date(world.lastUpdate).toLocaleTimeString()}`, true);
+  document.getElementById('teamSub').textContent = `Team: ${teamState.name} · started short 1,200 lots JUN HO @ $3.8500`;
+  document.getElementById('roundNum').textContent = world.round;
+  document.getElementById('roundDate').textContent = world.rounds[world.round - 1].date;
+  document.getElementById('newsRound').textContent = world.round;
+  const r = world.rounds[world.round - 1];
+  renderNews(world.rounds[world.round - 1].newsHtml);
+  renderCurve(r);
+  renderPositions(r);
+  renderPnL();
+  renderTradeLog();
+  renderSD(world);
+  renderTradeTicket(r);
+  updateQuote(r);
+}
+
+// --- Wire up form ---
+function setupListeners() {
+  ['frontMonth', 'backMonth', 'lots'].forEach(id => {
+    const el = document.getElementById(id);
+    el.addEventListener('change', () => {
+      const w = readWorld();
+      if (w) updateQuote(w.rounds[w.round - 1]);
+    });
+    el.addEventListener('input', () => {
+      const w = readWorld();
+      if (w) updateQuote(w.rounds[w.round - 1]);
+    });
+  });
+  document.getElementById('toastUndo').addEventListener('click', undoLastTrade);
+  document.getElementById('toastDismiss').addEventListener('click', hideTradeToast);
+  document.getElementById('toastX').addEventListener('click', hideTradeToast);
+  document.getElementById('btnRename').addEventListener('click', () => {
+    document.getElementById('nameInput').value = teamState.name;
+    document.getElementById('nameModal').style.display = 'flex';
+  });
+  document.getElementById('btnNameSubmit').addEventListener('click', () => {
+    const name = (document.getElementById('nameInput').value || '').trim();
+    if (!name) return;
+    localStorage.setItem(TEAM_NAME_KEY, name);
+    teamState.name = name;
+    publishTeam();
+    document.getElementById('nameModal').style.display = 'none';
+    const world = readWorld();
+    if (world) render(world);
+  });
+}
+
+// --- Boot ---
+function boot() {
+  // Get / create team ID and name
+  let id = localStorage.getItem(TEAM_ID_KEY);
+  if (!id) {
+    id = genTeamId();
+    localStorage.setItem(TEAM_ID_KEY, id);
+  }
+  let name = localStorage.getItem(TEAM_NAME_KEY);
+  if (!name) {
+    document.getElementById('nameModal').style.display = 'flex';
+    document.getElementById('nameInput').focus();
+    document.getElementById('btnNameSubmit').addEventListener('click', () => {
+      const n = (document.getElementById('nameInput').value || '').trim() || 'Anonymous';
+      localStorage.setItem(TEAM_NAME_KEY, n);
+      document.getElementById('nameModal').style.display = 'none';
+      bootWithName(id, n);
+    }, { once: true });
+    return;
+  }
+  bootWithName(id, name);
+}
+
+function bootWithName(id, name) {
+  // Try to restore prior team state from localStorage
+  const prior = localStorage.getItem(TEAM_STATE_KEY(id));
+  if (prior) {
+    try {
+      teamState = JSON.parse(prior);
+      teamState.name = name; // pick up renames
+      teamState.id = id;
+      // Migration: trades now execute immediately — drop any leftover pending tickets
+      delete teamState.pendingBasket;
+      delete teamState.pendingTrade;
+      // Ensure positions have a side field (older saves were short-only)
+      for (const p of (teamState.positions || [])) {
+        if (!p.side) p.side = 'short';
+      }
+    } catch (e) {
+      teamState = freshTeamState(id, name);
+    }
+  } else {
+    teamState = freshTeamState(id, name);
+  }
+  setupListeners();
+  publishTeam();
+  // Apply current world (if any) immediately
+  const world = readWorld();
+  if (world) onWorld(world);
+  else render(null);
+}
+
+// Listen for world updates — local + Firebase
+if (bc) {
+  bc.onmessage = (e) => {
+    if (e.data && e.data.type === 'world') {
+      cachedWorld = e.data.world;
+      onWorld(e.data.world);
+    }
+  };
+}
+window.addEventListener('storage', (e) => {
+  if (e.key === WORLD_KEY) {
+    const world = readWorld();
+    if (world) { cachedWorld = world; onWorld(world); }
+  }
+});
+if (fbEnabled) {
+  fbDB.ref('world').on('value', (snap) => {
+    const world = snap.val();
+    if (world) {
+      cachedWorld = world;
+      // Mirror to localStorage for the local-only fallback path
+      try { localStorage.setItem(WORLD_KEY, JSON.stringify(world)); } catch (e) {}
+      onWorld(world);
+    }
+  });
+}
+
+boot();
+</script>
+</body>
+</html>

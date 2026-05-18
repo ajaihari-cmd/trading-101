@@ -1,0 +1,1233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Trading 101 — Workshop · Walk JUN → DEC</title>
+<!-- Firebase compat SDK (loads as global `firebase`) -->
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-database-compat.js"></script>
+<script src="firebase-config.js"></script>
+<style>
+  :root {
+    --bg: #ffffff;
+    --panel: #ffffff;
+    --panel-2: #f5f5f5;
+    --text: #1a1a1a;
+    --muted: #6b6b6b;
+    --accent: #C8102E;
+    --accent-soft: #FBE9EB;
+    --buy: #1B7F3A;
+    --sell: #C8102E;
+    --hedged: #1A3A7A;
+    --border: #e2e2e2;
+    --slate: #8a8a92;
+    --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; background: var(--bg); color: var(--text); font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 12px 14px; }
+  h1 { margin: 0 0 2px; font-size: 20px; letter-spacing: -0.5px; }
+  h1 span { color: var(--accent); }
+  .sub { color: var(--muted); margin-bottom: 8px; font-size: 12px; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; box-shadow: var(--shadow); }
+  .panel h2 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 1.3px; color: var(--muted); font-weight: 600; }
+  button { font-family: inherit; font-size: 12px; padding: 7px 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; transition: filter 0.1s; }
+  button:hover:not(:disabled) { filter: brightness(0.95); }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-accent { background: var(--accent); color: #ffffff; }
+  .btn-ghost { background: transparent; color: var(--text); border: 1px solid var(--border); }
+  .btn-slate { background: var(--slate); color: #ffffff; }
+
+  /* Header / controls */
+  .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; gap: 10px; flex-wrap: wrap; }
+  .round-pill { background: var(--slate); color: #ffffff; padding: 6px 12px; border-radius: 100px; font-size: 13px; font-weight: 700; display: inline-flex; align-items: center; gap: 8px; }
+  .round-pill .num { font-size: 18px; }
+  .round-pill .of { opacity: 0.7; font-size: 12px; }
+  .round-pill .date { font-size: 14px; font-weight: 800; padding-left: 10px; border-left: 1px solid rgba(255,255,255,0.35); margin-left: 6px; letter-spacing: 0.2px; }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  /* SD chart legend (in annotation row) */
+  #sdAnnotation .legend { display: inline-flex; gap: 10px; align-items: center; }
+  #sdAnnotation .legend .key { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); }
+  #sdAnnotation .legend .sw { display: inline-block; width: 14px; height: 8px; }
+  #sdAnnotation .legend .sw.range { background: #e2e2e2; border: 1px solid #bbb; }
+  #sdAnnotation .legend .sw.avg { border-top: 1.5px dashed #6b6b6b; height: 0; width: 16px; }
+  #sdAnnotation .legend .sw.cur { background: var(--accent); height: 2px; }
+  #sdAnnotation .legend .key:last-child { color: var(--accent); font-weight: 700; }
+
+  /* Calendar strip — shows each round's date + which contract expires */
+  .cal-strip { display: grid; grid-template-columns: repeat(10, 1fr); gap: 3px; margin-bottom: 10px; }
+  .cal-cell { background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 4px 2px 5px; text-align: center; font-variant-numeric: tabular-nums; position: relative; cursor: pointer; transition: transform 0.08s, box-shadow 0.08s, background 0.08s; }
+  .cal-cell:hover { background: #eaeaea; transform: translateY(-1px); box-shadow: var(--shadow); }
+  .cal-cell .r { font-size: 8px; color: var(--muted); letter-spacing: 1px; font-weight: 700; }
+  .cal-cell .d { font-size: 10px; font-weight: 700; color: var(--text); margin-top: 1px; line-height: 1.1; }
+  .cal-cell .x { font-size: 8px; color: var(--accent); font-weight: 800; margin-top: 1px; letter-spacing: 0.5px; line-height: 1.1; }
+  .cal-cell.past { opacity: 0.55; }
+  .cal-cell.now { background: var(--accent); border-color: var(--accent); }
+  .cal-cell.now:hover { background: var(--accent); }
+  .cal-cell.now .r, .cal-cell.now .d, .cal-cell.now .x { color: #ffffff; }
+  .cal-cell.expiry { border-color: var(--accent); }
+
+  /* Two-column main layout */
+  .main { display: grid; grid-template-columns: 1.4fr 1fr; gap: 14px; }
+  @media (max-width: 1000px) { .main { grid-template-columns: 1fr; } }
+
+  /* Curve display */
+  .curve-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
+  .curve-cell { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 6px 4px; text-align: center; font-variant-numeric: tabular-nums; }
+  .curve-cell.expired { opacity: 0.3; background: #ebebeb; }
+  .curve-cell.front { background: var(--accent-soft); border-color: var(--accent); }
+  .curve-cell .month { font-size: 10px; letter-spacing: 1px; font-weight: 700; color: var(--muted); }
+  .curve-cell.front .month { color: var(--accent); }
+  .curve-cell .price { font-size: 13px; font-weight: 700; margin-top: 2px; }
+  .curve-cell .spread { font-size: 9px; color: var(--accent); font-weight: 700; margin-top: 2px; min-height: 12px; }
+
+  /* News mockup container */
+  .news-slot { min-height: 84px; display: flex; align-items: center; }
+  .news-mock { width: 100%; }
+  /* WSJ */
+  .news-wsj { background:#ffffff; border:1px solid #d0d0d0; box-shadow:0 4px 14px rgba(0,0,0,0.12); border-radius:4px; padding:10px 14px; font-family: Georgia, 'Times New Roman', serif; }
+  .news-wsj .header { display:flex; align-items:center; gap:10px; border-bottom:2px solid #000; padding-bottom:4px; }
+  .news-wsj .logo { font-weight:900; font-size:13px; color:#000; letter-spacing:-0.5px; }
+  .news-wsj .breaking { background:#c8102e; color:#fff; font-size:9px; padding:1px 6px; font-weight:900; letter-spacing:1.5px; }
+  .news-wsj .date { margin-left:auto; font-size:10px; color:#777; font-family:Arial, sans-serif; }
+  .news-wsj .headline { font-weight:900; font-size:16px; margin-top:6px; line-height:1.2; color:#000; }
+  .news-wsj .dek { font-size:11px; color:#555; margin-top:2px; font-family:Arial,sans-serif; }
+  /* Reuters */
+  .news-reuters { background:#000000; color:#ffffff; padding:10px 14px; box-shadow:0 4px 14px rgba(0,0,0,0.18); font-family: Arial, sans-serif; }
+  .news-reuters .header { display:flex; align-items:center; gap:8px; }
+  .news-reuters .logo { background:#fe5000; color:#fff; font-size:10px; padding:2px 8px; font-weight:900; letter-spacing:1px; }
+  .news-reuters .meta { font-size:10px; color:#bbbbbb; letter-spacing:1px; }
+  .news-reuters .live { margin-left:auto; background:#fe5000; color:#fff; font-size:9px; padding:1px 5px; font-weight:900; }
+  .news-reuters .headline { font-size:15px; font-weight:900; margin-top:6px; line-height:1.2; }
+  .news-reuters .dek { font-size:11px; color:#cccccc; margin-top:2px; }
+  /* Truth Social */
+  .news-truth { background:#ffffff; border:1px solid #e0e0e0; box-shadow:0 4px 14px rgba(0,0,0,0.12); border-radius:12px; padding:10px 14px; font-family: -apple-system, 'Helvetica Neue', Arial, sans-serif; }
+  .news-truth .row { display:flex; align-items:flex-start; gap:10px; }
+  .news-truth .avatar { width:36px; height:36px; border-radius:50%; background:linear-gradient(135deg, #f4b942, #d18d2a); display:flex; align-items:center; justify-content:center; font-weight:900; font-size:12px; color:#000; flex-shrink:0; }
+  .news-truth .user { font-weight:700; font-size:13px; color:#000; }
+  .news-truth .check { color:#5b6ee1; font-size:13px; }
+  .news-truth .handle { color:#666; font-size:11px; }
+  .news-truth .ts { color:#888; font-size:10px; margin-left:auto; }
+  .news-truth .body { margin-top:4px; font-size:13px; line-height:1.35; color:#000; }
+  /* Bloomberg */
+  .news-bb { background:#000000; color:#ffffff; padding:10px 14px; box-shadow:0 4px 14px rgba(0,0,0,0.18); font-family: 'Helvetica Neue', Arial, sans-serif; }
+  .news-bb .header { display:flex; align-items:center; gap:8px; }
+  .news-bb .logo { background:#FA8E22; color:#000; font-size:10px; padding:2px 8px; font-weight:900; letter-spacing:1.5px; }
+  .news-bb .meta { font-size:10px; color:#bbbbbb; letter-spacing:1px; }
+  .news-bb .headline { font-size:15px; font-weight:900; margin-top:6px; line-height:1.2; }
+  .news-bb .dek { font-size:11px; color:#cccccc; margin-top:2px; }
+  /* EIA */
+  .news-eia { background:#ffffff; border:1px solid #d0d0d0; box-shadow:0 4px 14px rgba(0,0,0,0.12); border-radius:4px; padding:10px 14px; font-family: 'Helvetica Neue', Arial, sans-serif; }
+  .news-eia .header { display:flex; align-items:center; gap:10px; border-bottom:1px solid #e0e0e0; padding-bottom:4px; }
+  .news-eia .logo { background:#003c71; color:#ffffff; font-size:10px; padding:2px 8px; font-weight:900; letter-spacing:1.5px; }
+  .news-eia .title { font-size:12px; font-weight:700; color:#003c71; }
+  .news-eia .when { margin-left:auto; font-size:10px; color:#777; }
+  .news-eia .headline { font-weight:800; font-size:15px; margin-top:6px; line-height:1.2; color:#000; }
+  .news-eia .dek { font-size:11px; color:#555; margin-top:2px; }
+  /* System notice */
+  .news-system { background: var(--slate); color: #ffffff; padding: 10px 14px; border-radius: 8px; text-align: center; }
+  .news-system .label { font-size:10px; letter-spacing:2px; font-weight:700; opacity:0.85; }
+  .news-system .headline { font-size:15px; font-weight:800; margin-top:4px; }
+  .news-system .dek { font-size:11px; margin-top:2px; opacity:0.9; }
+
+  /* Scoreboard table */
+  .leader { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+  .leader th { text-align: left; padding: 8px; font-size: 10px; letter-spacing: 1px; color: var(--muted); text-transform: uppercase; border-bottom: 1px solid var(--border); }
+  .leader td { padding: 8px; border-bottom: 1px solid var(--border); }
+  .leader td.r { text-align: right; }
+  .leader .rank { width: 24px; font-weight: 800; color: var(--accent); }
+  .leader .pnl { font-weight: 800; font-size: 14px; }
+  .leader .pnl.pos { color: var(--buy); }
+  .leader .pnl.neg { color: var(--sell); }
+  .leader tr.winner { background: var(--accent-soft); }
+
+  /* Rank pill */
+  .rank-pill { display: inline-block; font-size: 10px; font-weight: 800; padding: 1px 6px; border-radius: 4px; background: var(--panel-2); color: var(--muted); margin-right: 4px; min-width: 22px; text-align: center; }
+  .rank-pill.rk-1 { background: #1B7F3A; color: #ffffff; }
+  .rank-pill.rk-last { background: var(--accent); color: #ffffff; }
+
+  /* Per-team positions broken out by month — with reorder animation */
+  .team-pos { padding: 6px 6px 8px; border-bottom: 1px dashed var(--border); border-radius: 6px; cursor: pointer; transition: background 0.2s, transform 0.3s ease; }
+  .team-pos:hover { background: #fafafa; }
+  .team-pos.open { background: #fbfbfb; }
+  .team-pos:last-child { border-bottom: none; }
+  .team-pos .head { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; margin-bottom: 4px; }
+
+  /* P&L row */
+  .pnl-row { display: grid; grid-template-columns: 1fr; gap: 4px; margin-top: 5px; }
+  .pnl-cell { background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; display: flex; justify-content: space-between; align-items: baseline; font-variant-numeric: tabular-nums; }
+  .pnl-cell .lbl { font-size: 9px; letter-spacing: 0.8px; color: var(--muted); font-weight: 700; text-transform: uppercase; }
+  .pnl-cell .val { font-size: 12px; font-weight: 800; color: var(--text); }
+  .pnl-cell .val.pos { color: var(--buy); }
+  .pnl-cell .val.neg { color: var(--accent); }
+  .pnl-cell.total { background: #1a1a1a; border-color: #1a1a1a; }
+  .pnl-cell.total .lbl { color: rgba(255,255,255,0.7); }
+  .pnl-cell.total .val { color: #ffffff; font-size: 13px; }
+  .pnl-cell.total .val.pos { color: #5DD58A; }
+  .pnl-cell.total .val.neg { color: #FF8294; }
+
+  /* Trade drilldown */
+  .drill { margin-top: 6px; background: var(--panel-2); border-radius: 6px; padding: 5px 8px; font-size: 11px; font-variant-numeric: tabular-nums; }
+  .drill.empty { color: var(--muted); text-align: center; padding: 8px; }
+  .drill .dhead { font-size: 9px; letter-spacing: 1px; color: var(--muted); font-weight: 700; text-transform: uppercase; margin-bottom: 3px; }
+  .drow { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: baseline; padding: 2px 0; border-top: 1px dotted var(--border); }
+  .drow:first-of-type { border-top: none; }
+  .drow .r { font-size: 9px; color: var(--muted); letter-spacing: 0.8px; font-weight: 700; }
+  .drow .w { color: var(--text); }
+  .drow .w em { color: var(--muted); font-style: normal; font-size: 10px; }
+  .drow .p { font-weight: 800; }
+  .drow .p.pos { color: var(--buy); }
+  .drow .p.neg { color: var(--accent); }
+  .drow .sp { font-size: 10px; color: var(--muted); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .ptiles { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; font-variant-numeric: tabular-nums; }
+  .ptile { background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 3px 2px 4px; text-align: center; }
+  .ptile .mo { font-size: 9px; letter-spacing: 0.8px; font-weight: 700; color: var(--muted); }
+  .ptile .lots { font-size: 12px; font-weight: 800; color: var(--text); line-height: 1.1; margin-top: 1px; }
+  .ptile .ent { font-size: 8px; color: var(--muted); line-height: 1.1; }
+  .ptile.has { background: var(--accent-soft); border-color: var(--accent); }
+  .ptile.has .mo { color: var(--accent); }
+  .ptile.empty .lots { color: #cccccc; }
+  .ptile.exp { background: #ebebeb; opacity: 0.5; }
+  .ptile.exp .lots { color: var(--muted); }
+
+  /* Position summary card */
+  .pos-summary { background: var(--panel-2); border-radius: 10px; padding: 12px; }
+  .pos-row { display: grid; grid-template-columns: 1fr auto auto auto; gap: 12px; align-items: baseline; padding: 6px 0; border-bottom: 1px dashed var(--border); }
+  .pos-row:last-child { border-bottom: none; }
+  .pos-row .label { font-size: 11px; color: var(--muted); }
+  .pos-row .month { font-weight: 800; color: var(--accent); }
+  .pos-row .lots { font-variant-numeric: tabular-nums; font-weight: 700; }
+  .pos-row .entry, .pos-row .mark { font-variant-numeric: tabular-nums; }
+
+  /* Trade log */
+  .log { max-height: 140px; overflow-y: auto; font-size: 12px; font-variant-numeric: tabular-nums; }
+  .log .entry { padding: 4px 8px; border-bottom: 1px solid var(--border); display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: baseline; }
+  .log .entry .r { font-size: 10px; color: var(--muted); letter-spacing: 1px; }
+  .log .entry .what { color: var(--text); }
+  .log .entry .pnl { font-weight: 700; }
+  .log .entry .pnl.pos { color: var(--buy); }
+  .log .entry .pnl.neg { color: var(--sell); }
+
+  /* Strategy badges */
+  .strat-badge { display: inline-block; font-size: 9px; padding: 1px 6px; border-radius: 4px; letter-spacing: 0.5px; font-weight: 700; text-transform: uppercase; }
+  .strat-smart { background: rgba(27,127,58,0.15); color: var(--buy); }
+  .strat-naive { background: rgba(107,107,107,0.15); color: var(--muted); }
+  .strat-panic { background: rgba(200,16,46,0.15); color: var(--accent); }
+  .strat-react { background: rgba(232,167,60,0.20); color: #b67923; }
+  .strat-wait { background: #e2e2e2; color: var(--text); }
+  .strat-team { background: rgba(26,58,122,0.15); color: var(--hedged); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <!-- HEADER -->
+  <div class="header-row">
+    <div>
+      <h1>Trading 101 — Workshop <span>· Walk JUN to DEC</span></h1>
+      <div class="sub">Every team starts short <strong>1,200 lots JUN HO</strong>. 10 rounds. Highest MTM P&amp;L wins.</div>
+    </div>
+    <div class="controls">
+      <span class="round-pill">
+        Round <span class="num" id="roundNum">1</span><span class="of">/10</span>
+        <span class="date" id="roundDate">May 15</span>
+      </span>
+      <button class="btn-accent" id="btnNext">Next round →</button>
+      <button class="btn-slate" id="btnScoreboard">Show scoreboard</button>
+      <button class="btn-ghost" id="btnReset">↻ Reset</button>
+    </div>
+  </div>
+
+  <!-- CALENDAR STRIP — shows the 15-round timeline and which contract expires when -->
+  <div class="cal-strip" id="calStrip"></div>
+
+  <!-- MAIN LAYOUT -->
+  <div class="main">
+    <!-- LEFT: News + Curve -->
+    <div>
+      <div class="panel">
+        <h2>News flash · Round <span id="newsRound">1</span></h2>
+        <div class="news-slot" id="newsSlot"></div>
+      </div>
+
+      <div class="panel">
+        <h2>Distillate stocks · 5-year range vs. current year</h2>
+        <svg id="sdChart" viewBox="0 0 720 170" style="width:100%; height:auto; display:block;"></svg>
+        <div id="sdAnnotation" style="display:flex; justify-content:space-between; align-items:baseline; margin-top:4px; font-size:11px; color:var(--muted);"></div>
+      </div>
+
+      <div class="panel">
+        <h2>NYMEX HO forward curve</h2>
+        <div class="curve-row" id="curveRow"></div>
+        <div style="margin-top:6px;">
+          <div style="font-size:10px; letter-spacing:1.3px; color:var(--muted); font-weight:700; text-transform:uppercase; margin-bottom:2px;">Shape of the curve</div>
+          <svg id="curveShape" viewBox="0 0 720 150" style="width:100%; height:auto; display:block;"></svg>
+        </div>
+        <div style="font-size: 10px; color: var(--muted); margin-top: 4px; text-align: center;">
+          Dashed line = front-to-back straight line. Curve bowing above = back-loaded, bowing below = front-loaded. <span style="color:var(--accent);">Red</span> = backwardation, <span style="color:var(--buy);">green</span> = contango.
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: Scoreboard -->
+    <div>
+      <div class="panel" id="scoreboardPanel" style="display:none;">
+        <h2>Live scoreboard · ranked by realized P&amp;L</h2>
+        <table class="leader" id="leaderTable"></table>
+        <div style="font-size:11px; color:var(--muted); margin-top:8px; text-align:center;">
+          Lower-realized-loss / higher-P&amp;L wins. Unrealized M2M shown in parentheses.
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Team activity · last 12 trades</h2>
+        <div class="log" id="tradeLog"></div>
+      </div>
+
+      <div class="panel" id="positionPanel">
+        <h2>All teams · current positions</h2>
+        <div id="positionList"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// TRADING 101 — WORKSHOP GAME
+// Walk JUN → DEC over 15 scripted rounds
+// ============================================================
+
+const GAL_PER_CONTRACT = 42000;       // NYMEX HO contract size
+const STARTING_LOTS    = 1200;        // Every team starts short 1,200 JUN
+const STARTING_MONTH   = 'JUN';
+const MONTHS           = ['JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+// Pure MTM: starting "entry" is just the R1 JUN mark — there is no pre-round-1 price
+const STARTING_ENTRY   = 3.8500;
+
+// --- Scripted curves -----------------------------------------
+// Prices are in $/gal, 4 decimal places throughout
+const SCRIPTED_ROUNDS = [
+  // R1: Near-flat seasonal curve — small driving-season bump (JUL), shoulder-season dip (SEP),
+  //     winter heating premium (NOV/DEC). Total JUN→DEC contango under 2¢.
+  {
+    idx: 1, date: 'May 15', mode: 'calm',
+    curve: { JUN: 3.8500, JUL: 3.8540, AUG: 3.8520, SEP: 3.8490, OCT: 3.8550, NOV: 3.8610, DEC: 3.8680 },
+    news: 'flat_start'
+  },
+  // R2: COVID hits — demand destruction, front collapses → steep contango opens
+  {
+    idx: 2, date: 'May 25 — COVID', mode: 'shock',
+    curve: { JUN: 3.2500, JUL: 3.5000, AUG: 3.6500, SEP: 3.7500, OCT: 3.8000, NOV: 3.8300, DEC: 3.8500 },
+    news: 'covid_lockdown'
+  },
+  // R3: JUN expires, contango deepens to a super-contango
+  {
+    idx: 3, date: 'Jun 30 · JUN expires', mode: 'expiry',
+    curve: { JUN: 2.8000, JUL: 3.2000, AUG: 3.5000, SEP: 3.7500, OCT: 3.9500, NOV: 4.0500, DEC: 4.1500 },
+    news: 'covid_stocks', expires: 'JUN'
+  },
+  // R4: JUL expires, contango still steep but front recovering
+  {
+    idx: 4, date: 'Jul 30 · JUL expires', mode: 'expiry',
+    curve: { JUL: 3.0500, AUG: 3.4000, SEP: 3.6500, OCT: 3.8500, NOV: 4.0000, DEC: 4.1000 },
+    news: 'recovery_delayed', expires: 'JUL'
+  },
+  // R5: IRAN STRIKE — curve flips violently to deep backwardation
+  {
+    idx: 5, date: 'Aug 5 — IRAN STRIKE', mode: 'shock',
+    curve: { AUG: 5.7500, SEP: 5.1000, OCT: 4.7000, NOV: 4.4500, DEC: 4.3000 },
+    news: 'iran_strike'
+  },
+  // R6: AUG expires deep in backwardation — brutal forced roll for anyone still in AUG
+  {
+    idx: 6, date: 'Aug 30 · AUG expires', mode: 'expiry',
+    curve: { AUG: 5.5500, SEP: 4.9500, OCT: 4.6000, NOV: 4.4000, DEC: 4.2800 },
+    news: 'aug_expiry', expires: 'AUG'
+  },
+  // R7: SEP expires, backwardation persists but easing
+  {
+    idx: 7, date: 'Sep 30 · SEP expires', mode: 'expiry',
+    curve: { SEP: 5.2500, OCT: 4.7500, NOV: 4.5000, DEC: 4.3500 },
+    news: 'peace_talks_fail', expires: 'SEP'
+  },
+  // R8: OCT expires, OPEC hike caps premium, curve flattens
+  {
+    idx: 8, date: 'Oct 30 · OCT expires', mode: 'expiry',
+    curve: { OCT: 4.6500, NOV: 4.4500, DEC: 4.3500 },
+    news: 'opec_hike', expires: 'OCT'
+  },
+  // R9: NOV expires, near-flat curve
+  {
+    idx: 9, date: 'Nov 30 · NOV expires', mode: 'expiry',
+    curve: { NOV: 4.3000, DEC: 4.2500 },
+    news: 'nov_expiry', expires: 'NOV'
+  },
+  // R10: GAME OVER — DEC settles, all positions force-closed
+  {
+    idx: 10, date: 'Dec 15 · GAME OVER', mode: 'final',
+    curve: { DEC: 4.2000 },
+    news: 'force_close', expires: 'DEC', forceClose: true
+  }
+];
+
+// --- Supply & Demand chart data ------------------------------
+// Distillate stocks in million barrels. 5-year envelope + current path.
+const SD_DATA = {
+  months: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
+  fiveYearMax: [165, 162, 156, 152, 154, 158, 152, 145, 140, 142, 148, 156],
+  fiveYearAvg: [138, 134, 130, 128, 132, 136, 130, 125, 122, 126, 132, 138],
+  fiveYearMin: [110, 108, 105, 108, 112, 116, 112, 108, 104, 108, 114, 120],
+  // Current year — flat start, COVID builds Jun-Jul, Iran shock draws Aug onward
+  currentYear:  [130, 128, 132, 138, 145, 175, 188, 165, 150, 140, 138, 142]
+};
+// Map round index (1-10) to calendar month index (0=Jan ... 11=Dec)
+const ROUND_TO_MONTH_IDX = {
+  1: 4,   // May (R1: May 15 baseline)
+  2: 4,   // May (R2: May 25 COVID)
+  3: 5,   // Jun (R3: Jun 30 JUN expires)
+  4: 6,   // Jul (R4: Jul 30 JUL expires)
+  5: 7,   // Aug (R5: Aug 5 IRAN strike)
+  6: 7,   // Aug (R6: Aug 30 AUG expires)
+  7: 8,   // Sep (R7: Sep 30 SEP expires)
+  8: 9,   // Oct (R8: Oct 30 OCT expires)
+  9: 10,  // Nov (R9: Nov 30 NOV expires)
+  10: 11  // Dec (R10: Dec 15 GAME OVER)
+};
+
+// --- News mockup library -------------------------------------
+function renderNews(key) {
+  switch (key) {
+    case 'flat_start': return `
+      <div class="news-mock news-eia">
+        <div class="header"><span class="logo">U.S. EIA</span><span class="title">Weekly Petroleum Status Report</span><span class="when">10:30 a.m. ET</span></div>
+        <div class="headline">Distillate Stocks +0.3M bbl — Market Calm, Curve Near-Flat</div>
+        <div class="dek">Less than 2¢ of contango across the strip — a faint seasonal shape (small driving-season bump in JUL, shoulder dip in SEP, modest heating premium into NOV/DEC). No carry worth chasing yet.</div>
+      </div>`;
+    case 'covid_lockdown': return `
+      <div class="news-mock news-wsj">
+        <div class="header"><span class="logo">THE WALL STREET JOURNAL.</span><span class="breaking">BREAKING</span><span class="date">May 25 · 06:14 a.m. ET</span></div>
+        <div class="headline">Pandemic Lockdowns Imposed Globally — Diesel Demand Plummets</div>
+        <div class="dek">Trucking volumes off 35%, jet fuel demand evaporating. Front-month diesel craters as refiners are unable to throttle output fast enough. Curve steepens to deep contango as storage premium balloons.</div>
+      </div>`;
+    case 'covid_stocks': return `
+      <div class="news-mock news-eia">
+        <div class="header"><span class="logo">U.S. EIA</span><span class="title">Weekly Petroleum Status Report</span><span class="when">10:30 a.m. ET</span></div>
+        <div class="headline">Distillate Stocks Build Record +8.2M bbl — Tank Tops Approaching</div>
+        <div class="dek">Cushing and Gulf Coast storage near capacity. Front-month spirals lower; carry traders bidding back months aggressively to take the barrels home. Super-contango regime in effect.</div>
+      </div>`;
+    case 'recovery_delayed': return `
+      <div class="news-mock news-reuters">
+        <div class="header"><span class="logo">REUTERS</span><span class="meta">ENERGY · 11:14 GMT</span></div>
+        <div class="headline">IEA Cuts 2024 Demand Forecast — Recovery Pushed to Q4</div>
+        <div class="dek">Mobility data shows freight rebound stalling. Refining margins crushed; contango persists across the entire forward strip.</div>
+      </div>`;
+    case 'iran_strike': return `
+      <div class="news-mock news-wsj">
+        <div class="header"><span class="logo">THE WALL STREET JOURNAL.</span><span class="breaking">BREAKING</span><span class="date">Aug 5 · 03:42 a.m. ET</span></div>
+        <div class="headline">U.S. Strikes Iranian Oil Facility, Diesel Surges $2+ Overnight</div>
+        <div class="dek">Bandar Abbas processing complex hit; refiners scramble to cover near-term supply. Front-month rips, back months barely move — curve flips violently to deep backwardation. Anyone short the front month is wiped out.</div>
+      </div>`;
+    case 'aug_expiry': return `
+      <div class="news-mock news-system">
+        <div class="label">EXCHANGE NOTICE</div>
+        <div class="headline">AUG HO last trading day · deep backwardation</div>
+        <div class="dek">Remaining AUG positions force-rolled to SEP at the prevailing spread. AUG−SEP spread is currently ~60¢ — brutal for shorts caught in the prompt.</div>
+      </div>`;
+    case 'peace_talks_fail': return `
+      <div class="news-mock news-reuters">
+        <div class="header"><span class="logo">REUTERS</span><span class="meta">GEOPOLITICS · 14:32 GMT</span><span class="live">LIVE</span></div>
+        <div class="headline">Peace Talks Stall — Premium Holds, Curve Stays Inverted</div>
+        <div class="dek">Backchannel diplomacy yields no breakthrough. Diesel curve remains heavily backwardated as supply uncertainty persists.</div>
+      </div>`;
+    case 'opec_hike': return `
+      <div class="news-mock news-bb">
+        <div class="header"><span class="logo">BLOOMBERG</span><span class="meta">COMMODITIES · 09:14 EST</span></div>
+        <div class="headline">OPEC+ Lifts Output 1.2M bpd — Supply Premium Fading</div>
+        <div class="dek">Saudi and UAE step up production. Diesel back-months firm, front-month drifts. Backwardation easing toward flat as the supply fear unwinds.</div>
+      </div>`;
+    case 'nov_expiry': return `
+      <div class="news-mock news-system">
+        <div class="label">EXCHANGE NOTICE</div>
+        <div class="headline">NOV HO last trading day</div>
+        <div class="dek">Any remaining NOV positions will be force-rolled to DEC at the prevailing spread.</div>
+      </div>`;
+    case 'force_close': return `
+      <div class="news-mock news-system" style="background: var(--accent);">
+        <div class="label">GAME OVER</div>
+        <div class="headline">All positions force-closed at DEC $4.2000</div>
+        <div class="dek">Final scoreboard reveals the team that played the COVID-contango → Iran-backwardation curve best.</div>
+      </div>`;
+    default: return `<div class="news-mock news-system"><div class="headline">—</div></div>`;
+  }
+}
+
+// --- Team strategies (demo) ----------------------------------
+// A strategy returns an array of trades to execute at a given round.
+// Trade shape: { action: 'roll', closeMonth, openMonth, lots }
+// or:           { action: 'reverse', closeMonth, openMonth, lots }  (same mechanic, just labeled differently)
+//
+// The engine also auto-force-rolls expiring positions to the next available month.
+
+const STRATEGIES = {
+  stayFront: {
+    name: 'Stay Front',
+    color: 'strat-naive',
+    desc: 'Never rolls voluntarily. Force-rolled at each expiry — stuck short AUG when Iran hits.',
+    plan: () => []
+  },
+  earlyRoll: {
+    name: 'Too Early',
+    color: 'strat-wait',
+    desc: 'Rolls JUN → DEC at R1 on the flat curve — captures no carry, misses the COVID JUN crash.',
+    plan: (round, team) => {
+      if (round === 1 && team.hasPosition('JUN')) {
+        return [{ action: 'roll', closeMonth: 'JUN', openMonth: 'DEC', lots: STARTING_LOTS, note: 'rolled flat' }];
+      }
+      return [];
+    }
+  },
+  covidRoll: {
+    name: 'Roll on COVID',
+    color: 'strat-smart',
+    desc: 'Holds JUN through the COVID crash, then rolls JUN → DEC at R2 to capture the new contango.',
+    plan: (round, team) => {
+      if (round === 2 && team.hasPosition('JUN')) {
+        return [{ action: 'roll', closeMonth: 'JUN', openMonth: 'DEC', lots: STARTING_LOTS, note: 'COVID contango grab' }];
+      }
+      return [];
+    }
+  },
+  monthly: {
+    name: 'Roll Monthly',
+    color: 'strat-naive',
+    desc: 'Rolls one month forward every round — collects carry in contango, pays it in backwardation.',
+    plan: (round, team) => {
+      const pos = team.positions[0];
+      if (!pos) return [];
+      const i = MONTHS.indexOf(pos.month);
+      if (i < 0 || i >= MONTHS.length - 1) return [];
+      const next = MONTHS[i + 1];
+      const r = SCRIPTED_ROUNDS[round - 1];
+      if (r.curve[next] == null) return [];
+      // Skip if this month is already expiring this round (force-roll handles it)
+      if (r.expires === pos.month) return [];
+      return [{ action: 'roll', closeMonth: pos.month, openMonth: next, lots: pos.lots, note: '+1mo' }];
+    }
+  },
+  iranReact: {
+    name: 'Reactive Iran',
+    color: 'strat-react',
+    desc: 'Sits through COVID; panics into DEC after the Iran strike — pays full backwardation spread.',
+    plan: (round, team) => {
+      if (round === 5 && team.positions.length > 0 && team.positions[0].month !== 'DEC') {
+        const pos = team.positions[0];
+        return [{ action: 'roll', closeMonth: pos.month, openMonth: 'DEC', lots: pos.lots, note: 'panic post-Iran' }];
+      }
+      return [];
+    }
+  }
+};
+
+// --- Game state ----------------------------------------------
+let state;
+
+function freshState() {
+  // Live workshop mode: no scripted demo teams — only real participants show up.
+  // (Add demos back here for solo testing if needed.)
+  const teams = [];
+  return {
+    round: 1,
+    showScoreboard: false,
+    expanded: {}, // teamId → boolean (drilldown open)
+    teams: teams.map(t => ({
+      id: t.id,
+      strategy: t.strategy,
+      human: t.human,
+      name: STRATEGIES[t.strategy].name,
+      positions: [{ month: STARTING_MONTH, lots: STARTING_LOTS, entry: STARTING_ENTRY, side: 'short' }],
+      realized: 0,
+      tradeLog: []
+    })),
+    tradeLog: [] // global event feed
+  };
+}
+
+function hasPositionHelper(team) {
+  return (month) => team.positions.some(p => p.month === month && p.lots > 0);
+}
+
+// --- Pricing helpers -----------------------------------------
+function priceFor(round, month) {
+  const r = SCRIPTED_ROUNDS[round - 1];
+  return r.curve[month];
+}
+
+// --- Trade execution -----------------------------------------
+// Pure MTM with spread-at-roll accounting:
+//  - At each round transition, positions are MTM'd to the new mark (sweep in nextRound).
+//  - A roll within a round books the FULL spread (openPx - closePx) for a short.
+//    Since entries have just been swept to the round's mark, closeLegMtm is 0 and the
+//    roll P&L is the carry captured.
+function executeTrade(team, trade, round) {
+  const closePx = priceFor(round, trade.closeMonth);
+  const openPx  = priceFor(round, trade.openMonth);
+  if (closePx == null || openPx == null) return null;
+
+  let closePos = team.positions.find(p => p.month === trade.closeMonth);
+  if (!closePos || closePos.lots < trade.lots) return null;
+
+  // Pick up any uncaptured MTM on the close-leg (normally 0 because the sweep already ran)
+  const closeLegMtm = (closePos.entry - closePx) * trade.lots * GAL_PER_CONTRACT;
+  // Roll spread = (openPx - closePx) for a SHORT rolling forward.
+  // Positive in contango (back > front) — short collects carry.
+  const spreadPnl = (openPx - closePx) * trade.lots * GAL_PER_CONTRACT;
+  const tradePnl = closeLegMtm + spreadPnl;
+  team.realized += tradePnl;
+
+  // Reduce close position
+  closePos.lots -= trade.lots;
+  if (closePos.lots === 0) {
+    team.positions = team.positions.filter(p => p !== closePos);
+  }
+  // Open new position at current mark
+  let openPos = team.positions.find(p => p.month === trade.openMonth);
+  if (openPos) {
+    const totalLots = openPos.lots + trade.lots;
+    openPos.entry = (openPos.entry * openPos.lots + openPx * trade.lots) / totalLots;
+    openPos.lots = totalLots;
+  } else {
+    team.positions.push({ month: trade.openMonth, lots: trade.lots, entry: openPx, side: 'short' });
+  }
+  const logEntry = {
+    round, teamId: team.id, teamName: team.name,
+    action: trade.action,
+    closeMonth: trade.closeMonth, closePx,
+    openMonth: trade.openMonth, openPx,
+    lots: trade.lots,
+    spreadPnl: spreadPnl,
+    realized: tradePnl,
+    note: trade.note || ''
+  };
+  team.tradeLog.push(logEntry);
+  state.tradeLog.push(logEntry);
+  return logEntry;
+}
+
+// --- Force-close logic for expiries --------------------------
+function nextAvailableMonth(round, fromMonth) {
+  const r = SCRIPTED_ROUNDS[round - 1];
+  const i = MONTHS.indexOf(fromMonth);
+  for (let j = i + 1; j < MONTHS.length; j++) {
+    if (r.curve[MONTHS[j]] != null) return MONTHS[j];
+  }
+  return null;
+}
+
+function handleExpiries(round) {
+  const r = SCRIPTED_ROUNDS[round - 1];
+  const expiringMonth = r.expires;
+  if (!expiringMonth) return;
+  for (const team of state.teams) {
+    const pos = team.positions.find(p => p.month === expiringMonth);
+    if (!pos) continue;
+    if (r.forceClose) {
+      // Final force-close at this month's price (no new position opened)
+      const closePx = r.curve[expiringMonth];
+      const realizedDelta = (pos.entry - closePx) * pos.lots * GAL_PER_CONTRACT;
+      team.realized += realizedDelta;
+      const logEntry = {
+        round, teamId: team.id, teamName: team.name,
+        action: 'force-close', closeMonth: expiringMonth, closePx,
+        openMonth: null, openPx: null,
+        lots: pos.lots, realized: realizedDelta,
+        note: 'game over'
+      };
+      team.tradeLog.push(logEntry);
+      state.tradeLog.push(logEntry);
+      team.positions = team.positions.filter(p => p !== pos);
+    } else {
+      const next = nextAvailableMonth(round, expiringMonth);
+      if (!next) continue;
+      executeTrade(team, { action: 'force-roll', closeMonth: expiringMonth, openMonth: next, lots: pos.lots, note: 'expiry' }, round);
+    }
+  }
+}
+
+// --- Advance round -------------------------------------------
+// Round transition (pure MTM):
+//   1. Run scripted strategies at the CURRENT round (using its marks).
+//      Rolls book the spread; close-leg MTM is already 0 because entries were swept here last.
+//   2. Handle any expiries at the current round.
+//   3. Increment to the next round.
+//   4. MTM sweep: pick up price movement from current entry to the new round's mark; reset entry.
+function nextRound() {
+  if (state.round >= SCRIPTED_ROUNDS.length) return;
+  const currentRound = state.round;
+  // 1. Execute scripted strategies for the current round
+  for (const team of state.teams) {
+    if (team.human) continue;
+    team.hasPosition = hasPositionHelper(team);
+    const strat = STRATEGIES[team.strategy];
+    const trades = strat.plan(currentRound, team);
+    for (const t of trades) executeTrade(team, t, currentRound);
+  }
+  // 2. Handle expiries at current round
+  handleExpiries(currentRound);
+  // 3. Advance
+  state.round += 1;
+  // 4. Sweep MTM to the new round's marks
+  const r = SCRIPTED_ROUNDS[state.round - 1];
+  for (const team of state.teams) {
+    for (const pos of team.positions) {
+      const newMark = r.curve[pos.month];
+      if (newMark == null) continue;
+      const mtmDelta = (pos.entry - newMark) * pos.lots * GAL_PER_CONTRACT;
+      team.realized += mtmDelta;
+      pos.entry = newMark;
+    }
+  }
+  // 5. Final-round force-close: positions are already MTM'd to the final mark, so just close them
+  if (r.forceClose) {
+    for (const team of state.teams) {
+      for (const pos of team.positions.slice()) {
+        const closePx = r.curve[pos.month];
+        if (closePx == null) continue;
+        // entry was just swept = closePx, so this is bookkeeping only (no further P&L)
+        team.tradeLog.push({
+          round: state.round, teamId: team.id, teamName: team.name,
+          action: 'force-close', closeMonth: pos.month, closePx,
+          openMonth: null, openPx: null,
+          lots: pos.lots, spreadPnl: 0, realized: 0,
+          note: 'game over'
+        });
+        state.tradeLog.push(team.tradeLog[team.tradeLog.length - 1]);
+      }
+      team.positions = [];
+    }
+  }
+  render();
+}
+
+// --- Mark-to-market for display ------------------------------
+function teamMTM(team) {
+  const r = SCRIPTED_ROUNDS[state.round - 1];
+  let unrealized = 0;
+  for (const p of team.positions) {
+    const mark = r.curve[p.month];
+    if (mark != null) {
+      unrealized += (p.entry - mark) * p.lots * GAL_PER_CONTRACT;
+    }
+  }
+  return unrealized;
+}
+
+// --- Rendering -----------------------------------------------
+function fmt$(x) {
+  if (x === 0 || x == null) return '$0';
+  const sign = x < 0 ? '−' : (x > 0 ? '+' : '');
+  return sign + '$' + Math.abs(Math.round(x)).toLocaleString('en-US');
+}
+
+// Calendar strip — 15-round timeline with expiry markers
+function renderCalStrip() {
+  let html = '';
+  for (let i = 0; i < SCRIPTED_ROUNDS.length; i++) {
+    const r = SCRIPTED_ROUNDS[i];
+    const isNow  = (i + 1) === state.round;
+    const isPast = (i + 1) <  state.round;
+    const cls = ['cal-cell'];
+    if (isPast) cls.push('past');
+    if (isNow)  cls.push('now');
+    if (r.expires) cls.push('expiry');
+    // Parse the visible date — drop the "· JUN expires" / "— WAR" suffix for the strip cell
+    const shortDate = r.date.split(/[·—]/)[0].trim();
+    const exTag = r.expires ? `${r.expires} ×` : '';
+    html += `<div class="${cls.join(' ')}" data-round="${i + 1}" title="Jump to Round ${i + 1} · ${r.date}">
+      <div class="r">R${i + 1}</div>
+      <div class="d">${shortDate}</div>
+      <div class="x">${exTag || '&nbsp;'}</div>
+    </div>`;
+  }
+  document.getElementById('calStrip').innerHTML = html;
+  // Wire click handlers
+  document.querySelectorAll('#calStrip .cal-cell').forEach(el => {
+    el.addEventListener('click', () => {
+      const target = parseInt(el.dataset.round, 10);
+      if (!isNaN(target)) gotoRound(target);
+    });
+  });
+}
+
+// Jump to a specific round — replays scripted strategies + expiries from R1
+// so positions, realized P&L, and the trade log all reflect the target round.
+function gotoRound(target) {
+  if (target < 1 || target > SCRIPTED_ROUNDS.length) return;
+  if (target === state.round) return;
+  // Always rebuild from scratch so backward jumps work cleanly
+  const showScoreboard = state.showScoreboard;
+  const expanded = state.expanded || {};
+  state = freshState();
+  state.showScoreboard = showScoreboard;
+  state.expanded = expanded;
+  while (state.round < target) {
+    nextRound();
+  }
+  render();
+}
+
+// SVG: shape of the forward curve (line over available months)
+function renderCurveShape() {
+  const r = SCRIPTED_ROUNDS[state.round - 1];
+  const W = 720, H = 150;
+  const padL = 48, padR = 14, padT = 14, padB = 26;
+  const innerW = W - padL - padR;
+  const innerH = H - padT - padB;
+  // visible months
+  const visible = MONTHS.filter(m => r.curve[m] != null);
+  if (visible.length < 2) {
+    // Single month — just label it
+    const m = visible[0];
+    const px = r.curve[m];
+    document.getElementById('curveShape').innerHTML = `
+      <text x="${W/2}" y="${H/2}" text-anchor="middle" font-size="14" font-weight="700" fill="#1a1a1a">${m} $${px.toFixed(4)}</text>
+      <text x="${W/2}" y="${H/2+18}" text-anchor="middle" font-size="10" fill="#6b6b6b">(only contract left)</text>
+    `;
+    return;
+  }
+  // FIXED Y range across all rounds — so flat looks flat, contango looks steep, backwardation
+  // looks like a cliff. Range covers the full game: $2.50 (super-contango trough) to $6.00
+  // (Iran-shock peak).
+  const prices = visible.map(m => r.curve[m]);
+  const yMin = 2.50;
+  const yMax = 6.00;
+  const xOf = (i) => padL + (i / (visible.length - 1)) * innerW;
+  const yOf = (p) => padT + (1 - (p - yMin) / (yMax - yMin)) * innerH;
+
+  // Build SVG content
+  let svg = '';
+  // Reference dotted line from front-month price to back-month price (so curvature reads)
+  const yFront = yOf(prices[0]);
+  const yBack  = yOf(prices[prices.length - 1]);
+  svg += `<line x1="${padL}" y1="${yFront}" x2="${W - padR}" y2="${yBack}" stroke="#cccccc" stroke-width="1" stroke-dasharray="3,3"/>`;
+  // Axes
+  svg += `<line x1="${padL}" y1="${padT}" x2="${padL}" y2="${H - padB}" stroke="#e2e2e2" stroke-width="1"/>`;
+  svg += `<line x1="${padL}" y1="${H - padB}" x2="${W - padR}" y2="${H - padB}" stroke="#e2e2e2" stroke-width="1"/>`;
+  // Y labels (top, mid, bottom)
+  const yMid = (yMax + yMin) / 2;
+  svg += `<text x="${padL - 4}" y="${padT + 4}" text-anchor="end" font-size="10" fill="#6b6b6b" font-variant-numeric="tabular-nums">$${yMax.toFixed(2)}</text>`;
+  svg += `<text x="${padL - 4}" y="${padT + innerH/2 + 3}" text-anchor="end" font-size="10" fill="#6b6b6b" font-variant-numeric="tabular-nums">$${yMid.toFixed(2)}</text>`;
+  svg += `<text x="${padL - 4}" y="${H - padB + 3}" text-anchor="end" font-size="10" fill="#6b6b6b" font-variant-numeric="tabular-nums">$${yMin.toFixed(2)}</text>`;
+  // Y-axis label
+  svg += `<text x="14" y="${padT + innerH/2}" transform="rotate(-90, 14, ${padT + innerH/2})" text-anchor="middle" font-size="10" fill="#6b6b6b">$/gal</text>`;
+  // X labels (each visible month)
+  visible.forEach((m, i) => {
+    svg += `<text x="${xOf(i)}" y="${H - padB + 14}" text-anchor="middle" font-size="10" fill="#6b6b6b" font-weight="700">${m}</text>`;
+  });
+  // Front-month highlight under x-axis
+  svg += `<text x="${xOf(0)}" y="${H - padB + 14}" text-anchor="middle" font-size="10" fill="#C8102E" font-weight="800">${visible[0]}</text>`;
+  // Smooth path via Catmull-Rom → cubic Bezier (so the curve actually curves)
+  const lineColor = (prices[0] > prices[prices.length - 1]) ? '#C8102E' : (prices[0] < prices[prices.length - 1] ? '#1B7F3A' : '#6b6b6b');
+  const pts = visible.map((m, i) => ({ x: xOf(i), y: yOf(r.curve[m]) }));
+  const tension = 0.5;
+  let pathD = `M ${pts[0].x},${pts[0].y}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] || pts[i];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[i + 2] || p2;
+    const c1x = p1.x + ((p2.x - p0.x) / 6) * tension * 2;
+    const c1y = p1.y + ((p2.y - p0.y) / 6) * tension * 2;
+    const c2x = p2.x - ((p3.x - p1.x) / 6) * tension * 2;
+    const c2y = p2.y - ((p3.y - p1.y) / 6) * tension * 2;
+    pathD += ` C ${c1x.toFixed(1)},${c1y.toFixed(1)} ${c2x.toFixed(1)},${c2y.toFixed(1)} ${p2.x.toFixed(1)},${p2.y.toFixed(1)}`;
+  }
+  svg += `<path d="${pathD}" fill="none" stroke="${lineColor}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>`;
+  // Dots
+  visible.forEach((m, i) => {
+    svg += `<circle cx="${xOf(i)}" cy="${yOf(r.curve[m])}" r="3.5" fill="${lineColor}"/>`;
+    svg += `<text x="${xOf(i)}" y="${yOf(r.curve[m]) - 7}" text-anchor="middle" font-size="10" font-weight="700" fill="#1a1a1a" font-variant-numeric="tabular-nums">$${r.curve[m].toFixed(4)}</text>`;
+  });
+  document.getElementById('curveShape').innerHTML = svg;
+}
+
+// SVG: 5-year distillate stock range + current year path
+function renderSD() {
+  const W = 720, H = 170;
+  const padL = 48, padR = 14, padT = 14, padB = 26;
+  const innerW = W - padL - padR;
+  const innerH = H - padT - padB;
+  // Y axis covers the full range of the dataset, including the COVID stock peak (~190M)
+  const yMin = 95, yMax = 200;
+  const xOf = (i) => padL + (i / 11) * innerW;
+  const yOf = (v) => padT + (1 - (v - yMin) / (yMax - yMin)) * innerH;
+
+  let svg = '';
+  // Background grid + y labels
+  for (const v of [100, 130, 160, 190]) {
+    const y = yOf(v);
+    svg += `<line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="#eeeeee" stroke-width="1"/>`;
+    svg += `<text x="${padL - 6}" y="${y + 3}" text-anchor="end" font-size="10" fill="#6b6b6b" font-variant-numeric="tabular-nums">${v}M</text>`;
+  }
+  // 5-year envelope (max-min shaded)
+  let topPath = SD_DATA.fiveYearMax.map((v, i) => `${i === 0 ? 'M' : 'L'}${xOf(i)},${yOf(v)}`).join(' ');
+  let botPath = SD_DATA.fiveYearMin.slice().reverse().map((v, k) => `L${xOf(11 - k)},${yOf(v)}`).join(' ');
+  svg += `<path d="${topPath} ${botPath} Z" fill="#e2e2e2" opacity="0.7"/>`;
+  // 5-year max & min outlines
+  svg += `<polyline points="${SD_DATA.fiveYearMax.map((v, i) => xOf(i) + ',' + yOf(v)).join(' ')}" fill="none" stroke="#bbbbbb" stroke-width="1"/>`;
+  svg += `<polyline points="${SD_DATA.fiveYearMin.map((v, i) => xOf(i) + ',' + yOf(v)).join(' ')}" fill="none" stroke="#bbbbbb" stroke-width="1"/>`;
+  // 5-year average dashed
+  svg += `<polyline points="${SD_DATA.fiveYearAvg.map((v, i) => xOf(i) + ',' + yOf(v)).join(' ')}" fill="none" stroke="#6b6b6b" stroke-width="1.5" stroke-dasharray="4,3"/>`;
+  // Current-year path up to current month
+  const curMonthIdx = ROUND_TO_MONTH_IDX[state.round] || 0;
+  const currentPts = SD_DATA.currentYear.slice(0, curMonthIdx + 1).map((v, i) => xOf(i) + ',' + yOf(v)).join(' ');
+  svg += `<polyline points="${currentPts}" fill="none" stroke="#C8102E" stroke-width="2.8" stroke-linejoin="round"/>`;
+  // Dots on current-year
+  for (let i = 0; i <= curMonthIdx; i++) {
+    svg += `<circle cx="${xOf(i)}" cy="${yOf(SD_DATA.currentYear[i])}" r="3" fill="#C8102E"/>`;
+  }
+  // Highlight current month
+  const curVal = SD_DATA.currentYear[curMonthIdx];
+  svg += `<circle cx="${xOf(curMonthIdx)}" cy="${yOf(curVal)}" r="5" fill="#C8102E" stroke="#ffffff" stroke-width="2"/>`;
+  svg += `<text x="${xOf(curMonthIdx)}" y="${yOf(curVal) - 10}" text-anchor="middle" font-size="11" font-weight="800" fill="#C8102E" font-variant-numeric="tabular-nums">${curVal}M</text>`;
+  // X labels
+  SD_DATA.months.forEach((m, i) => {
+    const cur = (i === curMonthIdx);
+    svg += `<text x="${xOf(i)}" y="${H - padB + 14}" text-anchor="middle" font-size="10" fill="${cur ? '#C8102E' : '#6b6b6b'}" font-weight="${cur ? '800' : '700'}">${m}</text>`;
+  });
+  // Y-axis label
+  svg += `<text x="14" y="${padT + innerH/2}" transform="rotate(-90, 14, ${padT + innerH/2})" text-anchor="middle" font-size="10" fill="#6b6b6b">M bbl on hand</text>`;
+
+  document.getElementById('sdChart').innerHTML = svg;
+
+  // Annotation below
+  const avg = SD_DATA.fiveYearAvg[curMonthIdx];
+  const delta = curVal - avg;
+  const deltaTxt = delta > 0 ? `+${delta}M above 5-yr avg` : `${delta}M below 5-yr avg`;
+  const deltaColor = delta > 0 ? 'var(--accent)' : 'var(--buy)';
+  let zoneTxt = '';
+  if (curVal >= SD_DATA.fiveYearMax[curMonthIdx]) zoneTxt = 'at/above 5-yr MAX';
+  else if (curVal <= SD_DATA.fiveYearMin[curMonthIdx]) zoneTxt = 'at/below 5-yr MIN';
+  else zoneTxt = 'inside 5-yr range';
+  document.getElementById('sdAnnotation').innerHTML = `
+    <span><strong>${SD_DATA.months[curMonthIdx]}:</strong> <strong style="color:var(--text);">${curVal}M bbl</strong> on hand · <span style="color:${deltaColor};">${deltaTxt}</span> · ${zoneTxt}</span>
+    <span class="legend">
+      <span class="key"><span class="sw range"></span>5-yr range</span>
+      <span class="key"><span class="sw avg"></span>5-yr avg</span>
+      <span class="key"><span class="sw cur"></span>This year</span>
+    </span>
+  `;
+}
+
+function render() {
+  const r = SCRIPTED_ROUNDS[state.round - 1];
+
+  // Header
+  document.getElementById('roundNum').textContent = state.round;
+  document.getElementById('roundDate').textContent = r.date;
+  document.getElementById('newsRound').textContent = state.round;
+  document.getElementById('btnNext').disabled = state.round >= SCRIPTED_ROUNDS.length;
+  if (state.round >= SCRIPTED_ROUNDS.length) {
+    document.getElementById('btnNext').textContent = 'Game over';
+  } else {
+    document.getElementById('btnNext').textContent = `Next round → R${state.round + 1}`;
+  }
+
+  // News
+  document.getElementById('newsSlot').innerHTML = renderNews(r.news);
+
+  // Curve
+  const front = MONTHS.find(m => r.curve[m] != null);
+  let curveHtml = '';
+  for (const m of MONTHS) {
+    const px = r.curve[m];
+    if (px == null) {
+      curveHtml += `<div class="curve-cell expired"><div class="month">${m}</div><div class="price">—</div><div class="spread">expired</div></div>`;
+      continue;
+    }
+    const isFront = m === front;
+    const spread = (m === front) ? '' :
+      (() => {
+        const d = (r.curve[m] - r.curve[front]);
+        if (Math.abs(d) < 0.0001) return 'flat';
+        const sign = d > 0 ? '+' : '−';
+        const cents = Math.round(Math.abs(d) * 100);
+        const color = d > 0 ? 'color: var(--buy);' : 'color: var(--accent);';
+        return `<span style="${color}">${sign}${cents}¢</span>`;
+      })();
+    curveHtml += `<div class="curve-cell ${isFront ? 'front' : ''}">
+      <div class="month">${m}</div>
+      <div class="price">$${px.toFixed(4)}</div>
+      <div class="spread">${spread}</div>
+    </div>`;
+  }
+  document.getElementById('curveRow').innerHTML = curveHtml;
+
+  // Forward curve shape chart
+  renderCurveShape();
+
+  // Calendar strip
+  renderCalStrip();
+
+  // Supply & Demand chart
+  renderSD();
+
+  // Scoreboard
+  const btn = document.getElementById('btnScoreboard');
+  btn.textContent = state.showScoreboard ? 'Hide scoreboard' : 'Show scoreboard';
+  document.getElementById('scoreboardPanel').style.display = state.showScoreboard ? '' : 'none';
+  if (state.showScoreboard) renderScoreboard();
+
+  // Positions list
+  renderPositions();
+
+  // Trade log
+  renderTradeLog();
+}
+
+function renderScoreboard() {
+  const sorted = [...state.teams].sort((a, b) => {
+    const totA = a.realized + teamMTM(a);
+    const totB = b.realized + teamMTM(b);
+    return totB - totA;
+  });
+  let html = '<thead><tr><th>#</th><th>Team</th><th class="r">MTM P&amp;L</th></tr></thead><tbody>';
+  for (let i = 0; i < sorted.length; i++) {
+    const t = sorted[i];
+    const total = t.realized + teamMTM(t);
+    const cls = total > 0 ? 'pos' : (total < 0 ? 'neg' : '');
+    html += `<tr class="${i === 0 ? 'winner' : ''}">
+      <td class="rank">${i + 1}</td>
+      <td>${t.name} <span class="strat-badge ${STRATEGIES[t.strategy].color}">${STRATEGIES[t.strategy].name}</span></td>
+      <td class="r pnl ${cls}">${fmt$(total)}</td>
+    </tr>`;
+  }
+  html += '</tbody>';
+  document.getElementById('leaderTable').innerHTML = html;
+}
+
+function renderPositions() {
+  const r = SCRIPTED_ROUNDS[state.round - 1];
+  // Sort teams by MTM P&L, descending — highest P&L first
+  const sorted = [...state.teams].sort((a, b) => (b.realized + teamMTM(b)) - (a.realized + teamMTM(a)));
+  let html = '';
+  for (let rank = 0; rank < sorted.length; rank++) {
+    const t = sorted[rank];
+    // Build a month-keyed map: { JUN: {lots, entry}, ... }
+    const byMonth = {};
+    for (const p of t.positions) byMonth[p.month] = p;
+    // 7-column grid JUN..DEC under the team's name
+    let cells = '';
+    for (const m of MONTHS) {
+      const expired = (r.curve[m] == null);
+      const p = byMonth[m];
+      if (p) {
+        cells += `<div class="ptile has">
+          <div class="mo">${m}</div>
+          <div class="lots">${p.lots.toLocaleString()}</div>
+          <div class="ent">@ $${p.entry.toFixed(4)}</div>
+        </div>`;
+      } else {
+        cells += `<div class="ptile ${expired ? 'exp' : 'empty'}">
+          <div class="mo">${m}</div>
+          <div class="lots">—</div>
+          <div class="ent">${expired ? 'expired' : ''}</div>
+        </div>`;
+      }
+    }
+    const isClosed = t.positions.length === 0;
+    const mtm = t.realized + teamMTM(t);
+    const mtmCls = mtm > 0 ? 'pos' : (mtm < 0 ? 'neg' : '');
+    const isOpen = !!state.expanded[t.id];
+    // Trade-history drilldown (pure MTM — no per-trade realized; just what was rolled)
+    let drillHtml = '';
+    if (isOpen) {
+      if (t.tradeLog.length === 0) {
+        drillHtml = `<div class="drill empty">No trades yet — held the starting JUN short.</div>`;
+      } else {
+        let rows = '';
+        for (const e of t.tradeLog) {
+          const desc = e.action === 'force-close'
+            ? `Force-close ${e.lots.toLocaleString()} ${e.closeMonth} @ $${e.closePx.toFixed(4)}`
+            : `${e.action === 'force-roll' ? 'Force-roll' : 'Roll'} ${e.lots.toLocaleString()} ${e.closeMonth} → ${e.openMonth}`;
+          const spreadCents = (e.openPx != null && e.closePx != null)
+            ? `${e.openPx >= e.closePx ? '+' : ''}${((e.openPx - e.closePx) * 100).toFixed(2)}¢`
+            : '';
+          const cls = e.realized > 0 ? 'pos' : (e.realized < 0 ? 'neg' : '');
+          rows += `<div class="drow">
+            <span class="r">R${e.round}</span>
+            <span class="w">${desc}${spreadCents ? ` <em>· ${spreadCents}</em>` : ''}${e.note ? ` <em>· ${e.note}</em>` : ''}</span>
+            <span class="p ${cls}">${fmt$(e.realized)}</span>
+          </div>`;
+        }
+        drillHtml = `<div class="drill"><div class="dhead">All trades · ${t.tradeLog.length}</div>${rows}</div>`;
+      }
+    }
+    const rankClass = rank === 0 ? 'rk-1' : (rank === sorted.length - 1 ? 'rk-last' : 'rk');
+    html += `<div class="team-pos${isOpen ? ' open' : ''}" data-team="${t.id}">
+      <div class="head">
+        <span><span class="rank-pill ${rankClass}">#${rank + 1}</span> <strong>${t.name}</strong> <span class="strat-badge ${STRATEGIES[t.strategy].color}">${STRATEGIES[t.strategy].name}</span></span>
+        <span style="font-size:10px; color:var(--muted);">${isOpen ? '▾ hide trades' : '▸ click for trades'}${isClosed ? ' · all closed' : ''}</span>
+      </div>
+      <div class="ptiles">${cells}</div>
+      <div class="pnl-row">
+        <div class="pnl-cell total"><span class="lbl">MTM P&amp;L</span><span class="val ${mtmCls}">${fmt$(mtm)}</span></div>
+      </div>
+      ${drillHtml}
+    </div>`;
+  }
+  document.getElementById('positionList').innerHTML = html;
+  // Wire click toggles
+  document.querySelectorAll('#positionList .team-pos').forEach(el => {
+    el.addEventListener('click', () => {
+      const id = el.dataset.team;
+      state.expanded[id] = !state.expanded[id];
+      renderPositions();
+    });
+  });
+}
+
+function renderTradeLog() {
+  const recent = state.tradeLog.slice(-12).reverse();
+  if (recent.length === 0) {
+    document.getElementById('tradeLog').innerHTML = '<div style="color:var(--muted); font-size: 12px; text-align:center; padding: 12px;">No trades yet — click "Next round" to advance.</div>';
+    return;
+  }
+  let html = '';
+  for (const e of recent) {
+    const cls = e.realized > 0 ? 'pos' : (e.realized < 0 ? 'neg' : '');
+    const what = e.action === 'force-close'
+      ? `${e.teamName} · force-close ${e.lots} ${e.closeMonth} @ $${e.closePx.toFixed(4)}`
+      : `${e.teamName} · ${e.action === 'force-roll' ? 'FORCE ROLL' : 'roll'} ${e.lots} ${e.closeMonth} → ${e.openMonth} (${e.closePx.toFixed(4)} → ${e.openPx.toFixed(4)})${e.note ? ' · ' + e.note : ''}`;
+    html += `<div class="entry"><span class="r">R${e.round}</span><span class="what">${what}</span><span class="pnl ${cls}">${fmt$(e.realized)}</span></div>`;
+  }
+  document.getElementById('tradeLog').innerHTML = html;
+}
+
+// --- Multi-player sync layer ---------------------------------
+// Default backend: Firebase Realtime DB (cross-device).  Falls back to
+// localStorage + BroadcastChannel (same-browser only) if the config has
+// not been filled in — handy for local solo testing.
+const WORLD_KEY     = 'workshop:world';
+const TEAM_KEY_PREF = 'workshop:team:';
+const bc = (typeof BroadcastChannel !== 'undefined') ? new BroadcastChannel('workshop') : null;
+let participantTeams = {}; // teamId -> team payload
+
+let fbDB = null;
+let fbEnabled = false;
+(function initFirebase() {
+  try {
+    const cfg = window.firebaseConfig;
+    if (!cfg || !cfg.apiKey || cfg.apiKey === 'PASTE_API_KEY_HERE') return;
+    firebase.initializeApp(cfg);
+    fbDB = firebase.database();
+    fbEnabled = true;
+    console.log('Firebase enabled — cross-device sync active.');
+  } catch (e) {
+    console.warn('Firebase init failed, falling back to local sync:', e);
+  }
+})();
+
+function publishWorld() {
+  const rounds = SCRIPTED_ROUNDS.map(r => ({
+    idx: r.idx, date: r.date, mode: r.mode,
+    curve: r.curve, expires: r.expires || null, forceClose: !!r.forceClose,
+    newsHtml: renderNews(r.news)
+  }));
+  const world = {
+    round: state.round,
+    rounds,
+    sd: SD_DATA,
+    roundToMonth: ROUND_TO_MONTH_IDX,
+    lastUpdate: Date.now()
+  };
+  // Local fallback (same-browser tabs)
+  localStorage.setItem(WORLD_KEY, JSON.stringify(world));
+  if (bc) bc.postMessage({ type: 'world', world });
+  // Cross-device (Firebase)
+  if (fbEnabled) fbDB.ref('world').set(world).catch(e => console.warn('Firebase world write failed:', e));
+}
+
+function ingestParticipantTeam(team) {
+  if (!team || !team.id) return;
+  participantTeams[team.id] = team;
+  // Rebuild the merged teams display
+  syncParticipantsIntoState();
+  renderPositions();
+  if (state.showScoreboard) renderScoreboard();
+}
+
+function syncParticipantsIntoState() {
+  // Remove any participant entries no longer present
+  state.teams = state.teams.filter(t => !t.human || participantTeams[t.id]);
+  // Add or update each participant
+  for (const id in participantTeams) {
+    const p = participantTeams[id];
+    let t = state.teams.find(x => x.id === id);
+    if (!t) {
+      t = { id, human: true, strategy: 'human', name: p.name, positions: [], realized: 0, tradeLog: [] };
+      state.teams.push(t);
+    }
+    t.name = p.name;
+    t.positions = p.positions || [];
+    t.realized = p.realized || 0;
+    t.tradeLog = p.tradeLog || [];
+  }
+}
+
+// Register a 'human' strategy stub so STRATEGIES[t.strategy] doesn't crash
+STRATEGIES.human = { name: 'Human', color: 'strat-team', desc: 'Live participant', plan: () => [] };
+
+function loadExistingParticipants() {
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith(TEAM_KEY_PREF)) {
+      try {
+        const t = JSON.parse(localStorage.getItem(k));
+        if (t && t.id) participantTeams[t.id] = t;
+      } catch (e) {}
+    }
+  }
+  syncParticipantsIntoState();
+}
+
+// Listen for incoming participant updates — local + Firebase
+if (bc) {
+  bc.onmessage = (e) => {
+    if (e.data && e.data.type === 'team') ingestParticipantTeam(e.data.team);
+  };
+}
+window.addEventListener('storage', (e) => {
+  if (e.key && e.key.startsWith(TEAM_KEY_PREF)) {
+    try { ingestParticipantTeam(JSON.parse(e.newValue)); } catch (err) {}
+  }
+});
+if (fbEnabled) {
+  fbDB.ref('teams').on('value', (snap) => {
+    const all = snap.val() || {};
+    // Replace the participantTeams map with the fresh Firebase snapshot
+    participantTeams = {};
+    for (const id in all) participantTeams[id] = all[id];
+    syncParticipantsIntoState();
+    renderPositions();
+    if (state.showScoreboard) renderScoreboard();
+  });
+}
+
+// --- Controls ------------------------------------------------
+document.getElementById('btnNext').onclick = () => { nextRound(); publishWorld(); };
+document.getElementById('btnScoreboard').onclick = () => { state.showScoreboard = !state.showScoreboard; render(); };
+document.getElementById('btnReset').onclick = () => {
+  state = freshState();
+  loadExistingParticipants();
+  render();
+  publishWorld();
+};
+
+state = freshState();
+loadExistingParticipants();
+render();
+publishWorld();
+</script>
+</body>
+</html>
