@@ -731,6 +731,7 @@ function nextRound() {
       team.realized = 0;
       team.tradeLog = [];
     }
+    render();  // refresh UI so the round pill updates from "Practice" → "Round 1"
     return;
   }
 
