@@ -1372,6 +1372,13 @@ function publishWorld() {
 
 function ingestParticipantTeam(team) {
   if (!team || !team.id) return;
+  // Reject teams stamped with a stale session epoch — they're leftover writes from before
+  // the most recent Reset and should not appear on the dashboard.
+  if (team.sessionEpoch != null && team.sessionEpoch !== sessionEpoch) {
+    // Also pre-emptively delete the stale entry from Firebase so it doesn't keep firing
+    if (fbEnabled) fbDB.ref('teams/' + team.id).remove().catch(()=>{});
+    return;
+  }
   participantTeams[team.id] = team;
   // Rebuild the merged teams display
   syncParticipantsIntoState();
@@ -1427,9 +1434,18 @@ window.addEventListener('storage', (e) => {
 if (fbEnabled) {
   fbDB.ref('teams').on('value', (snap) => {
     const all = snap.val() || {};
-    // Replace the participantTeams map with the fresh Firebase snapshot
+    // Replace the participantTeams map with the fresh Firebase snapshot, filtered by
+    // session epoch — any team carrying a stale epoch is a leftover from before Reset and
+    // is both ignored AND scrubbed from Firebase.
     participantTeams = {};
-    for (const id in all) participantTeams[id] = all[id];
+    for (const id in all) {
+      const t = all[id];
+      if (t && t.sessionEpoch != null && t.sessionEpoch !== sessionEpoch) {
+        fbDB.ref('teams/' + id).remove().catch(()=>{});
+        continue;
+      }
+      participantTeams[id] = t;
+    }
     syncParticipantsIntoState();
     renderPositions();
     if (state.showScoreboard) renderScoreboard();
@@ -1447,18 +1463,36 @@ document.getElementById('btnReset').onclick = async () => {
   sessionEpoch = Date.now();
   persistEpoch();
   undoRoundSnapshot = null;
-  // Wipe Firebase so participants reset on their next world update
+  // Wipe Firebase teams + world so participants reset on their next world update
   if (fbEnabled) {
     try {
       await fbDB.ref('teams').remove();
       await fbDB.ref('world').remove();
     } catch (e) { console.warn('Firebase reset failed:', e); }
   }
+  // Also wipe THIS browser's localStorage team cache (handles same-browser test scenarios
+  // and any cached entries from prior sessions).
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(TEAM_KEY_PREF)) localStorage.removeItem(k);
+    }
+  } catch (e) {}
   participantTeams = {};
   state = freshState();
   // Do NOT call loadExistingParticipants — we want a clean slate. Anyone who wants in must re-join.
   render();
   publishWorld();
+  // Second wipe after 2.5s — catches any participant phone that re-wrote their team during
+  // the race window before they received the new world + reloaded.
+  setTimeout(() => {
+    if (fbEnabled) {
+      fbDB.ref('teams').remove().catch(()=>{});
+    }
+    participantTeams = {};
+    syncParticipantsIntoState();
+    renderPositions();
+  }, 2500);
 };
 
 state = freshState();

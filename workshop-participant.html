@@ -407,7 +407,11 @@ function readWorld() {
 
 function publishTeam() {
   if (!teamState) return;
-  const payload = { ...teamState, lastUpdate: Date.now() };
+  // Stamp every publish with the current session epoch. The instructor's listener filters
+  // out any team whose epoch != current session epoch — that way stale writes from races
+  // around Reset get rejected.
+  const epoch = (() => { try { return parseInt(localStorage.getItem(SESSION_EPOCH_KEY) || '0', 10); } catch (e) { return 0; } })();
+  const payload = { ...teamState, sessionEpoch: epoch, lastUpdate: Date.now() };
   // Local fallback
   localStorage.setItem(TEAM_STATE_KEY(teamState.id), JSON.stringify(payload));
   if (bc) bc.postMessage({ type: 'team', team: payload });
