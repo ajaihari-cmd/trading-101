@@ -1338,6 +1338,17 @@ let fbEnabled = false;
   }
 })();
 
+// Session epoch: incremented on every Reset. Participants compare this to their cached value
+// and wipe their localStorage if it changed — forcing a full re-join after a Reset.
+let sessionEpoch = (function() {
+  try {
+    const cached = localStorage.getItem('trd101_session_epoch');
+    return cached ? parseInt(cached, 10) : Date.now();
+  } catch (e) { return Date.now(); }
+})();
+function persistEpoch() { try { localStorage.setItem('trd101_session_epoch', String(sessionEpoch)); } catch(e){} }
+persistEpoch();
+
 function publishWorld() {
   const rounds = SCRIPTED_ROUNDS.map(r => ({
     idx: r.idx, date: r.date, mode: r.mode,
@@ -1349,6 +1360,7 @@ function publishWorld() {
     rounds,
     sd: SD_DATA,
     roundToMonth: ROUND_TO_MONTH_IDX,
+    sessionEpoch,
     lastUpdate: Date.now()
   };
   // Local fallback (same-browser tabs)
@@ -1429,8 +1441,12 @@ document.getElementById('btnNext').onclick = () => { nextRound(); publishWorld()
 document.getElementById('btnBack').onclick = () => { undoRound(); };
 document.getElementById('btnScoreboard').onclick = () => { state.showScoreboard = !state.showScoreboard; render(); };
 document.getElementById('btnReset').onclick = async () => {
-  const ok = confirm("RESET the game?\n\nThis will zero out every participant's position and trade log and send everyone back to the practice round. Participants will see a fresh start on their screens automatically.\n\nClick OK only if you really want to restart.");
+  const ok = confirm("RESET the game?\n\nThis will KICK EVERY PARTICIPANT out of the game. Their phones will be cleared and they'll have to re-scan the QR + re-enter a team name to come back. Only the Not Actively Managed baseline will remain.\n\nClick OK to wipe everything.");
   if (!ok) return;
+  // Bump the session epoch — participants compare this to their cached value and wipe on mismatch.
+  sessionEpoch = Date.now();
+  persistEpoch();
+  undoRoundSnapshot = null;
   // Wipe Firebase so participants reset on their next world update
   if (fbEnabled) {
     try {
@@ -1440,7 +1456,7 @@ document.getElementById('btnReset').onclick = async () => {
   }
   participantTeams = {};
   state = freshState();
-  loadExistingParticipants();
+  // Do NOT call loadExistingParticipants — we want a clean slate. Anyone who wants in must re-join.
   render();
   publishWorld();
 };

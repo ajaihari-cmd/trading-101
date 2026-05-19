@@ -350,6 +350,29 @@ const STARTING_ENTRY = 3.8500;
 const TEAM_ID_KEY    = 'workshop:teamId';
 const TEAM_NAME_KEY  = 'workshop:teamName';
 const TEAM_STATE_KEY = (id) => 'workshop:team:' + id;
+const SESSION_EPOCH_KEY = 'workshop:sessionEpoch';
+
+// Called whenever we read a world. If the instructor's session epoch is newer than ours,
+// we've been Reset out — wipe all local state and force a fresh re-join via name modal.
+function handleSessionEpoch(world) {
+  if (!world || world.sessionEpoch == null) return false;
+  const cached = localStorage.getItem(SESSION_EPOCH_KEY);
+  if (cached == null) {
+    // First time seeing an epoch — just store it, no reset
+    localStorage.setItem(SESSION_EPOCH_KEY, String(world.sessionEpoch));
+    return false;
+  }
+  if (parseInt(cached, 10) === world.sessionEpoch) return false;
+  // Epoch changed — instructor hit Reset. Wipe ALL local team data.
+  const oldId = localStorage.getItem(TEAM_ID_KEY);
+  if (oldId) localStorage.removeItem(TEAM_STATE_KEY(oldId));
+  localStorage.removeItem(TEAM_ID_KEY);
+  localStorage.removeItem(TEAM_NAME_KEY);
+  localStorage.setItem(SESSION_EPOCH_KEY, String(world.sessionEpoch));
+  // Hard reload to re-trigger the name modal flow
+  location.reload();
+  return true;
+}
 const WORLD_KEY      = 'workshop:world';
 const bc = (typeof BroadcastChannel !== 'undefined') ? new BroadcastChannel('workshop') : null;
 
@@ -447,6 +470,9 @@ function fmtCents(dollars) {
 // --- Sync: receive world updates from instructor ---
 function onWorld(world) {
   if (!world || !teamState) return;
+  // If the instructor hit Reset, the session epoch increments. This wipes local data
+  // and reloads — the user re-enters the name modal and joins fresh.
+  if (handleSessionEpoch(world)) return;
   // Apply any round transitions we haven't seen yet.
   // For each new round, do: (1) execute pending trade if any at the leaving round's marks,
   // (2) force-roll expiries, (3) advance, (4) sweep MTM to new marks.
