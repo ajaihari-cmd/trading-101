@@ -194,6 +194,7 @@
   .drow .p.pos { color: var(--buy); }
   .drow .p.neg { color: var(--accent); }
   .drow .sp { font-size: 10px; color: var(--muted); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .drow .ts { color: #b0b6bf; font-size: 10px; margin-left: 6px; font-variant-numeric: tabular-nums; letter-spacing: 0.3px; font-weight: 500; }
   .ptiles { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; font-variant-numeric: tabular-nums; }
   .ptile { background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 3px 2px 4px; text-align: center; }
   .ptile .mo { font-size: 9px; letter-spacing: 0.8px; font-weight: 700; color: var(--muted); }
@@ -219,6 +220,7 @@
   .log .entry { padding: 4px 8px; border-bottom: 1px solid var(--border); display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: baseline; }
   .log .entry .r { font-size: 10px; color: var(--muted); letter-spacing: 1px; }
   .log .entry .what { color: var(--text); }
+  .log .entry .ts { color: #b0b6bf; font-size: 10px; margin-left: 8px; font-variant-numeric: tabular-nums; letter-spacing: 0.3px; font-weight: 500; }
   .log .entry .pnl { font-weight: 700; }
   .log .entry .pnl.pos { color: var(--buy); }
   .log .entry .pnl.neg { color: var(--sell); }
@@ -641,7 +643,8 @@ function executeTrade(team, trade, round) {
     lots: trade.lots,
     spreadPnl: spreadPnl,
     realized: tradePnl,
-    note: trade.note || ''
+    note: trade.note || '',
+    stamp: Date.now()
   };
   team.tradeLog.push(logEntry);
   state.tradeLog.push(logEntry);
@@ -675,7 +678,8 @@ function handleExpiries(round) {
         action: 'force-close', closeMonth: expiringMonth, closePx,
         openMonth: null, openPx: null,
         lots: pos.lots, realized: realizedDelta,
-        note: 'game over'
+        note: 'game over',
+        stamp: Date.now()
       };
       team.tradeLog.push(logEntry);
       state.tradeLog.push(logEntry);
@@ -751,7 +755,8 @@ function nextRound() {
           action: 'force-close', closeMonth: pos.month, closePx,
           openMonth: null, openPx: null,
           lots: pos.lots, spreadPnl: 0, realized: 0,
-          note: 'game over'
+          note: 'game over',
+          stamp: Date.now()
         });
         state.tradeLog.push(team.tradeLog[team.tradeLog.length - 1]);
       }
@@ -1158,7 +1163,7 @@ function renderPositions() {
           const cls = e.realized > 0 ? 'pos' : (e.realized < 0 ? 'neg' : '');
           rows += `<div class="drow">
             <span class="r">R${e.round}</span>
-            <span class="w">${desc}${e.note ? ` <em>· ${e.note}</em>` : ''}</span>
+            <span class="w">${desc}${e.note ? ` <em>· ${e.note}</em>` : ''}${e.stamp ? ` <span class="ts">${new Date(e.stamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>` : ''}</span>
             <span class="p ${cls}">${fmt$(e.realized)}</span>
           </div>`;
         }
@@ -1167,9 +1172,11 @@ function renderPositions() {
     }
     const rankClass = rank === 0 ? 'rk-1' : (rank === sorted.length - 1 ? 'rk-last' : 'rk');
     const killBtn = t.human ? `<button class="kill-btn" data-team-kill="${t.id}" data-team-name="${t.name}" title="Remove this team from the game">×</button>` : '';
+    // Hide the "Human" strategy badge for live participants — it's redundant. Show it only for demo strategies (if any).
+    const stratBadge = t.human ? '' : `<span class="strat-badge ${STRATEGIES[t.strategy].color}">${STRATEGIES[t.strategy].name}</span>`;
     html += `<div class="team-pos${isOpen ? ' open' : ''}" data-team="${t.id}">
       <div class="head">
-        <span><span class="rank-pill ${rankClass}">#${rank + 1}</span> <strong>${t.name}</strong> <span class="strat-badge ${STRATEGIES[t.strategy].color}">${STRATEGIES[t.strategy].name}</span>${killBtn}</span>
+        <span><span class="rank-pill ${rankClass}">#${rank + 1}</span> <strong>${t.name}</strong> ${stratBadge}${killBtn}</span>
         <span style="font-size:10px; color:var(--muted);">${isOpen ? '▾ hide trades' : '▸ click for trades'}${isClosed ? ' · all closed' : ''}</span>
       </div>
       <div class="ptiles">${cells}</div>
@@ -1248,7 +1255,8 @@ function renderTradeLog() {
     } else {
       what = `${e.teamName || ''} · ${e.action} ${e.lots ? e.lots.toLocaleString() : ''}${e.note ? ' · ' + e.note : ''}`;
     }
-    html += `<div class="entry"><span class="r">R${e.round}</span><span class="what">${what}</span><span class="pnl ${cls}">${fmt$(e.realized)}</span></div>`;
+    const ts = e.stamp ? `<span class="ts">${new Date(e.stamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>` : '';
+    html += `<div class="entry"><span class="r">R${e.round}</span><span class="what">${what}${ts}</span><span class="pnl ${cls}">${fmt$(e.realized)}</span></div>`;
   }
   document.getElementById('tradeLog').innerHTML = html;
 }

@@ -184,6 +184,7 @@
   .log .entry { padding: 4px 8px; border-bottom: 1px solid var(--border); display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: baseline; }
   .log .entry .r { font-size: 10px; color: var(--muted); letter-spacing: 1px; }
   .log .entry .what { color: var(--text); }
+  .log .entry .ts { color: #b0b6bf; font-size: 10px; margin-left: 8px; font-variant-numeric: tabular-nums; letter-spacing: 0.3px; }
   .log .entry .pnl { font-weight: 700; }
   .log .entry .pnl.pos { color: var(--buy); }
   .log .entry .pnl.neg { color: var(--sell); }
@@ -494,7 +495,8 @@ function onWorld(world) {
         round: world.round, action: 'force-close',
         closeMonth: p.month, closePx: px,
         openMonth: null, openPx: null,
-        lots: p.lots, spreadPnl: 0, realized: 0, note: 'game over'
+        lots: p.lots, spreadPnl: 0, realized: 0, note: 'game over',
+        stamp: Date.now()
       });
     }
     teamState.positions = [];
@@ -557,7 +559,8 @@ function executeTicket(ticket, round, r) {
     frontMonth, backMonth, lots, price,
     spreadCents: +(price * 100).toFixed(2),
     realized: spreadPnl,
-    note: ticket.note || ''
+    note: ticket.note || '',
+    stamp: Date.now()
   });
 }
 
@@ -591,7 +594,8 @@ function handleExpiry(expiringMonth, round, r) {
     round, action: 'force-roll',
     closeMonth: expiringMonth, closePx,
     openMonth: next, openPx,
-    lots, realized: tradePnl, note: 'expiry (' + pos.side + ')'
+    lots, realized: tradePnl, note: 'expiry (' + pos.side + ')',
+    stamp: Date.now()
   });
 }
 
@@ -692,7 +696,9 @@ function renderTradeLog() {
     } else {
       what = `${e.action} ${e.lots || ''} ${e.month || e.frontMonth || ''}${e.note ? ' · ' + e.note : ''}`;
     }
-    html += `<div class="entry"><span class="r">R${e.round}</span><span class="what">${what}</span><span class="pnl ${cls}">${fmt$(e.realized)}</span></div>`;
+    const ts = e.stamp ? new Date(e.stamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
+    const tsHtml = ts ? `<span class="ts">${ts}</span>` : '';
+    html += `<div class="entry"><span class="r">R${e.round}</span><span class="what">${what}${tsHtml}</span><span class="pnl ${cls}">${fmt$(e.realized)}</span></div>`;
   }
   document.getElementById('tradeLog').innerHTML = html;
 }
