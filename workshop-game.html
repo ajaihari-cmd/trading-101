@@ -1271,18 +1271,21 @@ function renderPositions() {
       ev.stopPropagation();
       const id = btn.dataset.teamKill;
       const name = btn.dataset.teamName || id;
-      if (!confirm(`Remove team "${name}" from the game?\n\nTheir position and trade log will be deleted. The player can re-join with the same team name to rejoin.`)) return;
+      if (!confirm(`Remove team "${name}" from the game?\n\nTheir position and trade log will be deleted, and their phone will be wiped. They must scan the QR and pick a new team name to come back.`)) return;
+      // Add to killedIds so the phone self-wipes when it next sees the world
+      if (killedIds.indexOf(id) === -1) killedIds.push(id);
       // Wipe from Firebase
       if (fbEnabled) {
         try { await fbDB.ref('teams/' + id).remove(); } catch (e) { console.warn(e); }
       }
       // Wipe from local view
       delete participantTeams[id];
-      // Also remove from same-browser localStorage (in case it's a same-machine test)
       try { localStorage.removeItem(TEAM_KEY_PREF + id); } catch (e) {}
       syncParticipantsIntoState();
       renderPositions();
       if (state.showScoreboard) renderScoreboard();
+      // Push the updated killedIds list to participants
+      publishWorld();
     });
   });
 }
@@ -1368,6 +1371,10 @@ let sessionEpoch = (function() {
 function persistEpoch() { try { localStorage.setItem('trd101_session_epoch', String(sessionEpoch)); } catch(e){} }
 persistEpoch();
 
+// killedIds: any team in this list is kicked. The phone reads this from /world, sees its own id,
+// and wipes + reloads. Killed teams stay killed across rounds (no re-publishing).
+let killedIds = [];
+
 function publishWorld() {
   const rounds = SCRIPTED_ROUNDS.map(r => ({
     idx: r.idx, date: r.date, mode: r.mode,
@@ -1380,6 +1387,7 @@ function publishWorld() {
     sd: SD_DATA,
     roundToMonth: ROUND_TO_MONTH_IDX,
     sessionEpoch,
+    killedIds: killedIds.slice(),
     lastUpdate: Date.now()
   };
   // Local fallback (same-browser tabs)
@@ -1482,6 +1490,11 @@ document.getElementById('btnReset').onclick = async () => {
   sessionEpoch = Date.now();
   persistEpoch();
   undoRoundSnapshot = null;
+  // Add every currently-connected participant id to killedIds, so even phones that miss the
+  // epoch change (e.g. flushing offline writes) get sticky-kicked when they next read /world.
+  for (const id in participantTeams) {
+    if (killedIds.indexOf(id) === -1) killedIds.push(id);
+  }
   // Wipe Firebase teams + world so participants reset on their next world update
   if (fbEnabled) {
     try {

@@ -352,24 +352,37 @@ const TEAM_NAME_KEY  = 'workshop:teamName';
 const TEAM_STATE_KEY = (id) => 'workshop:team:' + id;
 const SESSION_EPOCH_KEY = 'workshop:sessionEpoch';
 
-// Called whenever we read a world. If the instructor's session epoch is newer than ours,
-// we've been Reset out — wipe all local state and force a fresh re-join via name modal.
+// Called whenever we read a world. Two things can force a self-wipe:
+//   (a) the instructor's session epoch changed (Reset was hit), or
+//   (b) our team id appears in world.killedIds (instructor kicked us specifically).
+// If we just have no cached epoch yet (first time seeing the world), we stamp and continue —
+// no wipe, no reload — so brand-new joiners aren't kicked in a loop.
 function handleSessionEpoch(world) {
-  if (!world || world.sessionEpoch == null) return false;
+  if (!world) return false;
+  const myId = localStorage.getItem(TEAM_ID_KEY);
+  // Individual kill: instructor explicitly removed this team
+  if (myId && Array.isArray(world.killedIds) && world.killedIds.indexOf(myId) !== -1) {
+    localStorage.removeItem(TEAM_STATE_KEY(myId));
+    localStorage.removeItem(TEAM_ID_KEY);
+    localStorage.removeItem(TEAM_NAME_KEY);
+    if (world.sessionEpoch != null) localStorage.setItem(SESSION_EPOCH_KEY, String(world.sessionEpoch));
+    location.reload();
+    return true;
+  }
+  if (world.sessionEpoch == null) return false;
   const cached = localStorage.getItem(SESSION_EPOCH_KEY);
+  // No cached epoch yet — stamp and continue (covers brand-new joiners AND
+  // post-reload phones that haven't published yet).
   if (cached == null) {
-    // First time seeing an epoch — just store it, no reset
     localStorage.setItem(SESSION_EPOCH_KEY, String(world.sessionEpoch));
     return false;
   }
   if (parseInt(cached, 10) === world.sessionEpoch) return false;
-  // Epoch changed — instructor hit Reset. Wipe ALL local team data.
-  const oldId = localStorage.getItem(TEAM_ID_KEY);
-  if (oldId) localStorage.removeItem(TEAM_STATE_KEY(oldId));
+  // Epoch mismatch — Reset was hit. Wipe and reload.
+  if (myId) localStorage.removeItem(TEAM_STATE_KEY(myId));
   localStorage.removeItem(TEAM_ID_KEY);
   localStorage.removeItem(TEAM_NAME_KEY);
   localStorage.setItem(SESSION_EPOCH_KEY, String(world.sessionEpoch));
-  // Hard reload to re-trigger the name modal flow
   location.reload();
   return true;
 }
@@ -1079,6 +1092,10 @@ function boot() {
 }
 
 function bootWithName(id, name) {
+  // FIRST: check epoch BEFORE doing anything else. If we're stale, wipe and reload
+  // without ever publishing a team to Firebase — that's how leftover names sneak through.
+  const earlyWorld = readWorld();
+  if (earlyWorld && handleSessionEpoch(earlyWorld)) return;
   // Try to restore prior team state from localStorage
   const prior = localStorage.getItem(TEAM_STATE_KEY(id));
   if (prior) {
