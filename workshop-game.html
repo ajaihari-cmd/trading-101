@@ -776,16 +776,31 @@ function nextRound() {
   handleExpiries(currentRound);
   // 3. Advance
   state.round += 1;
-  // 4. Sweep MTM to the new round's marks (side-aware)
+  // 4. Sweep MTM to the new round's marks (side-aware). Log each non-zero sweep so the
+  // trade-log math reconciles to MTM P&L without needing to reason about hidden movements.
   const r = SCRIPTED_ROUNDS[state.round - 1];
   for (const team of state.teams) {
     for (const pos of team.positions) {
       const newMark = r.curve[pos.month];
       if (newMark == null) continue;
+      const oldMark = pos.entry;
       const dir = pos.side === 'long' ? 1 : -1;
-      const mtmDelta = dir * (newMark - pos.entry) * pos.lots * GAL_PER_CONTRACT;
+      const mtmDelta = dir * (newMark - oldMark) * pos.lots * GAL_PER_CONTRACT;
       team.realized += mtmDelta;
       pos.entry = newMark;
+      if (Math.abs(mtmDelta) > 0.5) {
+        const entry = {
+          round: state.round, teamId: team.id, teamName: team.name,
+          action: 'mtm-sweep',
+          month: pos.month, side: pos.side,
+          oldMark, newMark, lots: pos.lots,
+          spreadPnl: 0, realized: mtmDelta,
+          note: pos.side === 'short' ? 'short MTM' : 'long MTM',
+          stamp: Date.now()
+        };
+        team.tradeLog.push(entry);
+        state.tradeLog.push(entry);
+      }
     }
   }
   // 5. Final-round force-close: positions are already MTM'd to the final mark, so just close them
@@ -1210,6 +1225,8 @@ function renderPositions() {
             const side = e.action === 'buy-spread' ? 'BUY' : 'SELL';
             const px = (e.price != null) ? (e.price >= 0 ? '+$' + e.price.toFixed(4) : '-$' + Math.abs(e.price).toFixed(4)) : '?';
             desc = `${side} ${e.lots.toLocaleString()} ${e.frontMonth}-${e.backMonth} @ ${px}`;
+          } else if (e.action === 'mtm-sweep') {
+            desc = `MTM sweep · ${e.lots.toLocaleString()} ${e.month} ${e.oldMark.toFixed(4)} → ${e.newMark.toFixed(4)}`;
           } else {
             desc = `${e.action} ${e.lots ? e.lots.toLocaleString() : ''}`;
           }
@@ -1305,6 +1322,8 @@ function renderTradeLog() {
       const side = e.action === 'buy-spread' ? 'BUY' : 'SELL';
       const px = (e.price != null) ? (e.price >= 0 ? '+$' + e.price.toFixed(4) : '-$' + Math.abs(e.price).toFixed(4)) : '?';
       what = `${e.teamName || ''} · ${side} ${e.lots.toLocaleString()} ${e.frontMonth}-${e.backMonth} @ ${px}`;
+    } else if (e.action === 'mtm-sweep') {
+      what = `${e.teamName || ''} · MTM sweep · ${e.lots.toLocaleString()} ${e.month} ${e.oldMark.toFixed(4)} → ${e.newMark.toFixed(4)}`;
     } else {
       what = `${e.teamName || ''} · ${e.action} ${e.lots ? e.lots.toLocaleString() : ''}${e.note ? ' · ' + e.note : ''}`;
     }
@@ -1483,16 +1502,17 @@ document.getElementById('btnReset').onclick = async () => {
   // Do NOT call loadExistingParticipants — we want a clean slate. Anyone who wants in must re-join.
   render();
   publishWorld();
-  // Second wipe after 2.5s — catches any participant phone that re-wrote their team during
-  // the race window before they received the new world + reloaded.
-  setTimeout(() => {
-    if (fbEnabled) {
-      fbDB.ref('teams').remove().catch(()=>{});
-    }
+  // Aggressive scrub for 5 seconds — wipes Firebase /teams every 500ms, killing any
+  // straggler writes from phones still mid-reload or with offline writes flushing.
+  let scrubTicks = 0;
+  const scrubInterval = setInterval(() => {
+    if (fbEnabled) fbDB.ref('teams').remove().catch(()=>{});
     participantTeams = {};
     syncParticipantsIntoState();
     renderPositions();
-  }, 2500);
+    scrubTicks++;
+    if (scrubTicks >= 10) clearInterval(scrubInterval);
+  }, 500);
 };
 
 state = freshState();
