@@ -246,13 +246,14 @@
   <div class="header-row">
     <div>
       <h1>Trading 101 — Workshop <span>· Walk JUN to DEC</span></h1>
-      <div class="sub">Practice round → then 10 scoring rounds. Every team starts short <strong>1,200 lots JUN HO</strong>. Highest MTM P&amp;L wins.</div>
+      <div class="sub">Practice round → then 7 scoring rounds. Every team starts short <strong>1,200 lots JUN HO</strong>. Highest MTM P&amp;L wins.</div>
     </div>
     <div class="controls">
       <span class="round-pill" id="roundPill">
-        <span id="roundLabel">Round</span> <span class="num" id="roundNum">—</span><span class="of" id="roundOf">/10</span>
+        <span id="roundLabel">Round</span> <span class="num" id="roundNum">—</span><span class="of" id="roundOf">/7</span>
         <span class="date" id="roundDate">Practice</span>
       </span>
+      <button class="btn-ghost" id="btnBack" disabled title="Undo the last round transition (one step only)">← Back</button>
       <button class="btn-accent" id="btnNext">Next round →</button>
       <button class="btn-slate" id="btnScoreboard">Show scoreboard</button>
       <button class="btn-ghost" id="btnReset">↻ Reset</button>
@@ -376,28 +377,11 @@ const SCRIPTED_ROUNDS = [
     curve: { AUG: 5.5500, SEP: 4.9500, OCT: 4.6000, NOV: 4.4000, DEC: 4.2800 },
     news: 'aug_expiry', expires: 'AUG'
   },
-  // R7: SEP expires, backwardation persists but easing
+  // R7: GAME OVER — OPEC + peace easing collapses the remaining curve; everything force-closes.
+  //  Curve includes SEP-DEC so anyone still holding gets marked out at the unwound levels.
   {
-    idx: 7, date: 'Sep 30 · SEP expires', mode: 'expiry',
-    curve: { SEP: 5.2500, OCT: 4.7500, NOV: 4.5000, DEC: 4.3500 },
-    news: 'peace_talks_fail', expires: 'SEP'
-  },
-  // R8: OCT expires, OPEC hike caps premium, curve flattens
-  {
-    idx: 8, date: 'Oct 30 · OCT expires', mode: 'expiry',
-    curve: { OCT: 4.6500, NOV: 4.4500, DEC: 4.3500 },
-    news: 'opec_hike', expires: 'OCT'
-  },
-  // R9: NOV expires, near-flat curve
-  {
-    idx: 9, date: 'Nov 30 · NOV expires', mode: 'expiry',
-    curve: { NOV: 4.3000, DEC: 4.2500 },
-    news: 'nov_expiry', expires: 'NOV'
-  },
-  // R10: GAME OVER — DEC settles, all positions force-closed
-  {
-    idx: 10, date: 'Dec 15 · GAME OVER', mode: 'final',
-    curve: { DEC: 4.2000 },
+    idx: 7, date: 'Dec 15 · GAME OVER', mode: 'final',
+    curve: { SEP: 4.6500, OCT: 4.4500, NOV: 4.3000, DEC: 4.2000 },
     news: 'force_close', expires: 'DEC', forceClose: true
   }
 ];
@@ -415,7 +399,7 @@ const SD_DATA = {
   //          Jan  Feb  Mar  Apr  May  Jun  Jul  Aug  Sep  Oct  Nov  Dec
   currentYear:[130, 128, 132, 138, 145, 175, 188, 165, 100,  95, 108, 118]
 };
-// Map state.round (1=Practice .. 11=R10) to calendar month index (0=Jan ... 11=Dec)
+// Map state.round (1=Practice .. 8=R7) to calendar month index (0=Jan ... 11=Dec)
 const ROUND_TO_MONTH_IDX = {
   1:  4,   // Practice  -> May
   2:  4,   // R1 May 15
@@ -424,10 +408,7 @@ const ROUND_TO_MONTH_IDX = {
   5:  6,   // R4 Jul 30 JUL expires
   6:  7,   // R5 Aug 5 IRAN strike
   7:  7,   // R6 Aug 30 AUG expires
-  8:  8,   // R7 Sep 30 SEP expires
-  9:  9,   // R8 Oct 30 OCT expires
-  10: 10,  // R9 Nov 30 NOV expires
-  11: 11   // R10 Dec 15 GAME OVER
+  8:  11   // R7 Dec 15 GAME OVER
 };
 
 // --- News mockup library -------------------------------------
@@ -713,8 +694,56 @@ function handleExpiries(round) {
 //   2. Handle any expiries at the current round.
 //   3. Increment to the next round.
 //   4. MTM sweep: pick up price movement from current entry to the new round's mark; reset entry.
+// One-level undo snapshot for round transitions. Captured BEFORE every nextRound() runs.
+let undoRoundSnapshot = null;
+
+function captureUndoSnapshot() {
+  // Deep clone enough state to restore: round number + every team's positions/realized/trade log.
+  undoRoundSnapshot = {
+    round: state.round,
+    teams: state.teams.map(t => ({
+      id: t.id,
+      strategy: t.strategy,
+      human: t.human,
+      name: t.name,
+      positions: (t.positions || []).map(p => ({ ...p })),
+      realized: t.realized || 0,
+      tradeLog: (t.tradeLog || []).slice()
+    })),
+    tradeLog: (state.tradeLog || []).slice(),
+    participantTeams: JSON.parse(JSON.stringify(participantTeams || {}))
+  };
+}
+
+function undoRound() {
+  if (!undoRoundSnapshot) return;
+  if (!confirm('Undo the last round transition?\n\nThis rolls everything back to the start of the previous round — positions, P&L, and trade log are restored. Trades placed during the round you advanced FROM will be erased.\n\nOK to undo?')) return;
+  // Restore local state
+  state.round = undoRoundSnapshot.round;
+  state.teams = undoRoundSnapshot.teams.map(t => ({
+    ...t,
+    positions: t.positions.map(p => ({ ...p })),
+    tradeLog: t.tradeLog.slice()
+  }));
+  state.tradeLog = undoRoundSnapshot.tradeLog.slice();
+  participantTeams = JSON.parse(JSON.stringify(undoRoundSnapshot.participantTeams));
+  // Push restored participant teams back to Firebase so phones get the rollback
+  if (fbEnabled) {
+    fbDB.ref('teams').remove().then(() => {
+      const updates = {};
+      for (const id in participantTeams) updates[id] = participantTeams[id];
+      if (Object.keys(updates).length) fbDB.ref('teams').update(updates).catch(e => console.warn(e));
+    }).catch(e => console.warn(e));
+  }
+  undoRoundSnapshot = null;  // single-level undo
+  publishWorld();
+  render();
+}
+
 function nextRound() {
   if (state.round >= SCRIPTED_ROUNDS.length) return;
+  // Capture undo snapshot BEFORE any state changes
+  captureUndoSnapshot();
   const currentRound = state.round;
   const leavingPractice = SCRIPTED_ROUNDS[currentRound - 1].practice;
 
@@ -1034,9 +1063,12 @@ function render() {
   } else {
     document.getElementById('roundLabel').textContent = 'Round';
     document.getElementById('roundNum').textContent = state.round - 1;
-    document.getElementById('roundOf').textContent = '/10';
+    document.getElementById('roundOf').textContent = '/7';
     document.getElementById('newsRound').textContent = state.round - 1;
   }
+  // Back-one-round button enabled only if a snapshot exists
+  const backBtn = document.getElementById('btnBack');
+  if (backBtn) backBtn.disabled = !undoRoundSnapshot;
   document.getElementById('roundDate').textContent = r.date;
   document.getElementById('btnNext').disabled = state.round >= SCRIPTED_ROUNDS.length;
   if (state.round >= SCRIPTED_ROUNDS.length) {
@@ -1394,6 +1426,7 @@ if (fbEnabled) {
 
 // --- Controls ------------------------------------------------
 document.getElementById('btnNext').onclick = () => { nextRound(); publishWorld(); };
+document.getElementById('btnBack').onclick = () => { undoRound(); };
 document.getElementById('btnScoreboard').onclick = () => { state.showScoreboard = !state.showScoreboard; render(); };
 document.getElementById('btnReset').onclick = async () => {
   const ok = confirm("RESET the game?\n\nThis will zero out every participant's position and trade log and send everyone back to the practice round. Participants will see a fresh start on their screens automatically.\n\nClick OK only if you really want to restart.");

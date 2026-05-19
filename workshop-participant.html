@@ -161,10 +161,11 @@
   .qctx { font-size: 11px; color: var(--muted); margin-top: 6px; font-variant-numeric: tabular-nums; min-height: 14px; }
   .qctx .err { color: var(--accent); font-weight: 700; }
   .confirm-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
-  .confirm-row button { font-size: 14px; font-weight: 800; padding: 12px 8px; font-variant-numeric: tabular-nums; }
-  .confirm-row .btn-sell { background: var(--buy); color: #fff; }
-  .confirm-row .btn-buy  { background: var(--accent); color: #fff; }
-  .confirm-row button span { display: block; font-size: 13px; font-weight: 800; margin-top: 2px; }
+  .confirm-row button { font-size: 18px; font-weight: 900; padding: 14px 8px; font-variant-numeric: tabular-nums; letter-spacing: 1px; border-radius: 10px; }
+  .confirm-row .btn-buy  { background: #15803D; color: #fff; }
+  .confirm-row .btn-sell { background: #DC2626; color: #fff; }
+  .confirm-row .btn-buy:disabled, .confirm-row .btn-sell:disabled { opacity: 0.35; }
+  .confirm-row button span { display: block; font-size: 12px; font-weight: 700; margin-top: 3px; opacity: 0.92; }
   /* Pending basket */
   .basket { background: #FFF7E6; border: 1px solid #E8A73C; border-radius: 8px; padding: 8px 10px; margin-top: 8px; font-size: 12px; font-variant-numeric: tabular-nums; }
   .basket .b-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
@@ -282,18 +283,18 @@
             <select id="backMonth"></select>
           </div>
           <div>
-            <label>Lots (×100)</label>
-            <input type="number" id="lots" min="100" step="100" value="1200" />
+            <label>Lots (max = your short in front month)</label>
+            <input type="text" inputmode="numeric" pattern="[0-9]*" id="lots" value="1200" autocomplete="off" />
           </div>
         </div>
         <div class="quote" id="quoteBox">
-          <div class="col bid"><div class="lbl">Bid</div><div class="val" id="qBid">—</div><div class="sub">sell spread here</div></div>
-          <div class="col ask"><div class="lbl">Ask</div><div class="val" id="qAsk">—</div><div class="sub">buy spread here</div></div>
+          <div class="col bid"><div class="lbl">Bid</div><div class="val" id="qBid">—</div><div class="sub">SELL price</div></div>
+          <div class="col ask"><div class="lbl">Ask</div><div class="val" id="qAsk">—</div><div class="sub">BUY price</div></div>
         </div>
         <div class="qctx" id="ticketCtx"></div>
         <div class="confirm-row">
-          <button class="btn-sell" id="btnSell" disabled>Sell at bid <span id="sellPx">—</span></button>
-          <button class="btn-buy"  id="btnBuy"  disabled>Buy at ask <span id="buyPx">—</span></button>
+          <button class="btn-buy"  id="btnBuy"  disabled>BUY <span id="buyPx">—</span></button>
+          <button class="btn-sell" id="btnSell" disabled>SELL <span id="sellPx">—</span></button>
         </div>
       </div>
 
@@ -795,15 +796,22 @@ function renderTradeTicket(r) {
   updateQuote(r);
 }
 
+// Helper: short lots a team holds in a specific month (0 if none / long).
+function shortLotsIn(month) {
+  if (!teamState || !teamState.positions) return 0;
+  const p = teamState.positions.find(p => p.month === month && p.side === 'short');
+  return p ? p.lots : 0;
+}
+
 function updateQuote(r) {
   const fm = document.getElementById('frontMonth').value;
   const bm = document.getElementById('backMonth').value;
   const lotsInput = document.getElementById('lots');
-  // Snap lots to nearest 100
-  let lots = parseInt(lotsInput.value, 10) || 0;
-  if (lots < 100) lots = 100;
-  lots = Math.round(lots / 100) * 100;
-  if (parseInt(lotsInput.value, 10) !== lots) lotsInput.value = lots;
+  // Read what the user typed; sanitize to digits only. Snap DOWN to the nearest 100
+  // for any computation / trade — increments must be multiples of 100. The input field
+  // is allowed to show the raw value while typing; on blur it normalizes to the snapped value.
+  const rawTyped = parseInt((lotsInput.value || '').replace(/[^0-9]/g, ''), 10) || 0;
+  let lots = Math.floor(rawTyped / 100) * 100;  // always trade in 100-lot increments
   const qBid = document.getElementById('qBid');
   const qAsk = document.getElementById('qAsk');
   const ctx = document.getElementById('ticketCtx');
@@ -824,20 +832,33 @@ function updateQuote(r) {
   quoteBox.classList.remove('invalid');
   const fMark = r.curve[fm], bMark = r.curve[bm];
   const dist = monthDistance(fm, bm);
-  const q = spreadQuote(fMark, bMark, dist, lots);
+  const q = spreadQuote(fMark, bMark, dist, Math.max(lots, 100));
   qBid.textContent = fmtUsdSigned(q.bid);
   qAsk.textContent = fmtUsdSigned(q.ask);
   sellPx.textContent = fmtUsdSigned(q.bid);
   buyPx.textContent  = fmtUsdSigned(q.ask);
 
+  // Position constraint: must roll an EXISTING short. No long-creation, no naked over-rolling.
+  //  BUY  spread = buy front + sell back  → must have short FRONT covering lots
+  //  SELL spread = sell front + buy back  → must have short BACK  covering lots
+  const shortFront = shortLotsIn(fm);
+  const shortBack  = shortLotsIn(bm);
+  const buyValid  = lots >= 100 && lots <= shortFront;
+  const sellValid = lots >= 100 && lots <= shortBack;
+
   const sellPnl = (+q.bid) * lots * GAL_PER_CONTRACT;
   const buyPnl  = (-q.ask) * lots * GAL_PER_CONTRACT;
   const fmtPnl = (x) => (x > 0 ? '+$' : '−$') + Math.abs(Math.round(x)).toLocaleString();
-  ctx.innerHTML = `${fm}/${bm} · ${dist}-mo spread · ${lots.toLocaleString()} lots · ${(q.half * 2).toFixed(4)} wide  ·  Sell MTM <strong style="color:${sellPnl>0?'var(--buy)':'var(--accent)'}">${fmtPnl(sellPnl)}</strong> · Buy MTM <strong style="color:${buyPnl>0?'var(--buy)':'var(--accent)'}">${fmtPnl(buyPnl)}</strong>`;
+  const snapNote  = (rawTyped !== lots && lots > 0) ? `<span style="color: var(--accent); font-weight:700;"> (typed ${rawTyped} → rounded down to ${lots} — trades in 100-lot increments)</span>` : '';
+  const constraintMsg = (!buyValid && !sellValid)
+    ? `<span class="err">You only carry ${shortLotsIn(fm) || shortLotsIn(bm) || 0} short in ${shortLotsIn(fm) ? fm : (shortLotsIn(bm) ? bm : fm + '/' + bm)} — can't trade more than your position, can't go more short than 1,200 total.</span>`
+    : '';
+  ctx.innerHTML = `${fm}/${bm} · ${dist}-mo spread · ${lots.toLocaleString()} lots${snapNote} · ${(q.half * 2).toFixed(4)} wide  ·  BUY MTM <strong style="color:${buyPnl>0?'var(--buy)':'var(--accent)'}">${fmtPnl(buyPnl)}</strong> · SELL MTM <strong style="color:${sellPnl>0?'var(--buy)':'var(--accent)'}">${fmtPnl(sellPnl)}</strong>${constraintMsg ? '<br>' + constraintMsg : ''}`;
 
-  btnSell.disabled = false; btnBuy.disabled = false;
-  btnSell.onclick = () => commitTicket('sell', fm, bm, lots, q.bid, r);
-  btnBuy.onclick  = () => commitTicket('buy',  fm, bm, lots, q.ask, r);
+  btnBuy.disabled  = !buyValid;
+  btnSell.disabled = !sellValid;
+  btnBuy.onclick   = buyValid  ? () => commitTicket('buy',  fm, bm, lots, q.ask, r) : null;
+  btnSell.onclick  = sellValid ? () => commitTicket('sell', fm, bm, lots, q.bid, r) : null;
 }
 
 // Immediate trade execution.  Saves an undo snapshot, fires the trade right now,
@@ -848,6 +869,17 @@ let toastTimer = null;
 function commitTicket(side, fm, bm, lots, price, r) {
   const world = readWorld();
   if (!world) return;
+  // Defensive: snap lots to 100s, enforce position constraints. UI should already block these,
+  // but guard against any race / direct call.
+  lots = Math.floor(lots / 100) * 100;
+  if (lots < 100) return;
+  // BUY = buy front (must close existing short FRONT), SELL = buy back (must close existing short BACK)
+  const closeLegMonth = (side === 'buy') ? fm : bm;
+  const closeLegShort = shortLotsIn(closeLegMonth);
+  if (lots > closeLegShort) {
+    alert('Trade rejected — you only carry ' + closeLegShort + ' short in ' + closeLegMonth + '. Cannot trade more lots than your existing short (and cannot go more than 1,200 total short).');
+    return;
+  }
   // Snapshot current state for undo
   undoSnapshot = {
     positions: teamState.positions.map(p => ({ ...p })),
@@ -963,6 +995,16 @@ function setupListeners() {
       const w = readWorld();
       if (w) updateQuote(w.rounds[w.round - 1]);
     });
+  });
+  // Snap-to-100 only on BLUR so typing isn't disrupted (especially on mobile keyboards).
+  const lotsEl = document.getElementById('lots');
+  lotsEl.addEventListener('blur', () => {
+    let v = parseInt((lotsEl.value || '').replace(/[^0-9]/g, ''), 10) || 0;
+    if (v < 100) v = 100;
+    v = Math.round(v / 100) * 100;
+    lotsEl.value = v;
+    const w = readWorld();
+    if (w) updateQuote(w.rounds[w.round - 1]);
   });
   document.getElementById('toastUndo').addEventListener('click', undoLastTrade);
   document.getElementById('toastDismiss').addEventListener('click', hideTradeToast);
