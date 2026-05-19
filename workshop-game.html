@@ -233,6 +233,7 @@
   .strat-react { background: rgba(232,167,60,0.20); color: #b67923; }
   .strat-wait { background: #e2e2e2; color: var(--text); }
   .strat-team { background: rgba(26,58,122,0.15); color: var(--hedged); }
+  .strat-passive { background: linear-gradient(90deg, #1a3a7a, #2a4f9a); color: #ffffff; letter-spacing: 0.8px; }
 </style>
 </head>
 <body>
@@ -506,6 +507,12 @@ function renderNews(key) {
 // The engine also auto-force-rolls expiring positions to the next available month.
 
 const STRATEGIES = {
+  passive: {
+    name: 'Baseline',
+    color: 'strat-passive',
+    desc: 'Holds JUN. Never trades voluntarily. Force-rolls forward at each expiry. The "do nothing" benchmark everyone else is compared against.',
+    plan: () => []
+  },
   stayFront: {
     name: 'Stay Front',
     color: 'strat-naive',
@@ -569,9 +576,12 @@ const STRATEGIES = {
 let state;
 
 function freshState() {
-  // Live workshop mode: no scripted demo teams — only real participants show up.
-  // (Add demos back here for solo testing if needed.)
-  const teams = [];
+  // Live workshop mode: only real participants + the Ajai baseline benchmark.
+  // The baseline never trades voluntarily — it holds JUN and gets force-rolled at each
+  // expiry. Its running P&L is the "do nothing" benchmark every other team is judged against.
+  const teams = [
+    { id: 'ajai-baseline', strategy: 'passive', human: false, name: 'Not Actively Managed' }
+  ];
   return {
     round: 1,
     showScoreboard: false,
@@ -580,7 +590,7 @@ function freshState() {
       id: t.id,
       strategy: t.strategy,
       human: t.human,
-      name: STRATEGIES[t.strategy].name,
+      name: t.name || STRATEGIES[t.strategy].name,
       positions: [{ month: STARTING_MONTH, lots: STARTING_LOTS, entry: STARTING_ENTRY, side: 'short' }],
       realized: 0,
       tradeLog: []
