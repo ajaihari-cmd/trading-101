@@ -1272,8 +1272,9 @@ function renderPositions() {
       const id = btn.dataset.teamKill;
       const name = btn.dataset.teamName || id;
       if (!confirm(`Remove team "${name}" from the game?\n\nTheir position and trade log will be deleted, and their phone will be wiped. They must scan the QR and pick a new team name to come back.`)) return;
-      // Add to killedIds so the phone self-wipes when it next sees the world
-      if (killedIds.indexOf(id) === -1) killedIds.push(id);
+      // Mark this team as killed: failure on the server-side filter, plus a signal in /world
+      // so the phone wipes itself on next read.
+      killTeam(id);
       // Wipe from Firebase
       if (fbEnabled) {
         try { await fbDB.ref('teams/' + id).remove(); } catch (e) { console.warn(e); }
@@ -1286,6 +1287,14 @@ function renderPositions() {
       if (state.showScoreboard) renderScoreboard();
       // Push the updated killedIds list to participants
       publishWorld();
+      // Keep scrubbing this team for 10s in case their phone has offline writes queued
+      // or is running old/cached code that doesn't honor killedIds.
+      let killTicks = 0;
+      const killInterval = setInterval(() => {
+        if (fbEnabled) fbDB.ref('teams/' + id).remove().catch(()=>{});
+        killTicks++;
+        if (killTicks >= 20) clearInterval(killInterval);
+      }, 500);
     });
   });
 }
@@ -1371,9 +1380,68 @@ let sessionEpoch = (function() {
 function persistEpoch() { try { localStorage.setItem('trd101_session_epoch', String(sessionEpoch)); } catch(e){} }
 persistEpoch();
 
-// killedIds: any team in this list is kicked. The phone reads this from /world, sees its own id,
-// and wipes + reloads. Killed teams stay killed across rounds (no re-publishing).
-let killedIds = [];
+// SERVER-CONTROLLED IDENTITY FILTER (the truth lives here, not on the phones).
+//
+// joinTimes[id] = the timestamp the INSTRUCTOR first saw this team id in Firebase.
+// resetTimestamp = the timestamp of the most recent Reset.
+//
+// A team is allowed on the dashboard iff joinTimes[id] >= resetTimestamp.
+//
+// Kill is a special case: we set joinTimes[id] = 0, which is guaranteed before any
+// resetTimestamp, so they're permanently filtered.
+//
+// killedIds is kept ALSO — purely as a signal in /world so phones can wipe themselves
+// and re-prompt for a name. The hard truth is the joinTimes filter on the instructor.
+
+const JOIN_TIMES_KEY = 'trd101_join_times';
+const RESET_TS_KEY   = 'trd101_reset_ts';
+const KILLED_IDS_KEY = 'trd101_killed_ids';
+
+let joinTimes = (function() {
+  try { const c = localStorage.getItem(JOIN_TIMES_KEY); return c ? JSON.parse(c) : {}; }
+  catch (e) { return {}; }
+})();
+function persistJoinTimes() {
+  try { localStorage.setItem(JOIN_TIMES_KEY, JSON.stringify(joinTimes)); } catch (e) {}
+}
+let resetTimestamp = (function() {
+  try { const c = localStorage.getItem(RESET_TS_KEY); return c ? parseInt(c, 10) : 0; }
+  catch (e) { return 0; }
+})();
+function persistResetTs() {
+  try { localStorage.setItem(RESET_TS_KEY, String(resetTimestamp)); } catch (e) {}
+}
+let killedIds = (function() {
+  try { const c = localStorage.getItem(KILLED_IDS_KEY); return c ? JSON.parse(c) : []; }
+  catch (e) { return []; }
+})();
+function persistKilledIds() {
+  try { localStorage.setItem(KILLED_IDS_KEY, JSON.stringify(killedIds)); } catch (e) {}
+}
+
+// Returns true iff team id should appear on the dashboard.
+function isAllowedTeam(id) {
+  if (!id) return false;
+  const jt = joinTimes[id];
+  if (jt == null) return false;             // never been recorded; treat as not allowed yet
+  if (jt < resetTimestamp) return false;    // joined before the most recent Reset
+  return true;
+}
+function recordFirstSeen(id) {
+  // Only record if this is genuinely the first time we've seen this id.
+  if (joinTimes[id] == null) {
+    joinTimes[id] = Date.now();
+    persistJoinTimes();
+  }
+}
+function killTeam(id) {
+  // Mark as joined before any reset — permanently filters them out.
+  joinTimes[id] = 0;
+  persistJoinTimes();
+  if (killedIds.indexOf(id) === -1) killedIds.push(id);
+  persistKilledIds();
+}
+function isKilled(id) { return killedIds.indexOf(id) !== -1; }
 
 function publishWorld() {
   const rounds = SCRIPTED_ROUNDS.map(r => ({
@@ -1381,6 +1449,10 @@ function publishWorld() {
     curve: r.curve, expires: r.expires || null, forceClose: !!r.forceClose,
     newsHtml: renderNews(r.news)
   }));
+  // Build a map version of killedIds — Firebase serializes arrays differently and we want
+  // the participant's lookup to be O(1) and not depend on Array.isArray quirks.
+  const killedMap = {};
+  for (const k of killedIds) killedMap[k] = true;
   const world = {
     round: state.round,
     rounds,
@@ -1388,6 +1460,7 @@ function publishWorld() {
     roundToMonth: ROUND_TO_MONTH_IDX,
     sessionEpoch,
     killedIds: killedIds.slice(),
+    killedMap,
     lastUpdate: Date.now()
   };
   // Local fallback (same-browser tabs)
@@ -1399,15 +1472,15 @@ function publishWorld() {
 
 function ingestParticipantTeam(team) {
   if (!team || !team.id) return;
-  // Reject teams stamped with a stale session epoch — they're leftover writes from before
-  // the most recent Reset and should not appear on the dashboard.
-  if (team.sessionEpoch != null && team.sessionEpoch !== sessionEpoch) {
-    // Also pre-emptively delete the stale entry from Firebase so it doesn't keep firing
+  // First-seen recording: if we've never seen this id, stamp it with NOW.
+  recordFirstSeen(team.id);
+  // The single source of truth: was this team first seen AT OR AFTER the last Reset?
+  if (!isAllowedTeam(team.id)) {
     if (fbEnabled) fbDB.ref('teams/' + team.id).remove().catch(()=>{});
+    try { localStorage.removeItem(TEAM_KEY_PREF + team.id); } catch (e) {}
     return;
   }
   participantTeams[team.id] = team;
-  // Rebuild the merged teams display
   syncParticipantsIntoState();
   renderPositions();
   if (state.showScoreboard) renderScoreboard();
@@ -1461,13 +1534,14 @@ window.addEventListener('storage', (e) => {
 if (fbEnabled) {
   fbDB.ref('teams').on('value', (snap) => {
     const all = snap.val() || {};
-    // Replace the participantTeams map with the fresh Firebase snapshot, filtered by
-    // session epoch — any team carrying a stale epoch is a leftover from before Reset and
-    // is both ignored AND scrubbed from Firebase.
+    // ONE FILTER: was this team id first seen at or after the last Reset?
+    // Anything that fails is rejected AND scrubbed from Firebase.
     participantTeams = {};
     for (const id in all) {
       const t = all[id];
-      if (t && t.sessionEpoch != null && t.sessionEpoch !== sessionEpoch) {
+      if (!t) continue;
+      recordFirstSeen(id);
+      if (!isAllowedTeam(id)) {
         fbDB.ref('teams/' + id).remove().catch(()=>{});
         continue;
       }
@@ -1480,21 +1554,36 @@ if (fbEnabled) {
 }
 
 // --- Controls ------------------------------------------------
-document.getElementById('btnNext').onclick = () => { nextRound(); publishWorld(); };
+document.getElementById('btnNext').onclick = () => {
+  // Before advancing, re-scrub any killed teams from Firebase. Belt-and-suspenders against
+  // phones running old/cached code that may have republished themselves between rounds.
+  if (fbEnabled) {
+    for (const id of killedIds) {
+      fbDB.ref('teams/' + id).remove().catch(()=>{});
+    }
+  }
+  nextRound();
+  publishWorld();
+};
 document.getElementById('btnBack').onclick = () => { undoRound(); };
 document.getElementById('btnScoreboard').onclick = () => { state.showScoreboard = !state.showScoreboard; render(); };
 document.getElementById('btnReset').onclick = async () => {
   const ok = confirm("RESET the game?\n\nThis will KICK EVERY PARTICIPANT out of the game. Their phones will be cleared and they'll have to re-scan the QR + re-enter a team name to come back. Only the Not Actively Managed baseline will remain.\n\nClick OK to wipe everything.");
   if (!ok) return;
-  // Bump the session epoch — participants compare this to their cached value and wipe on mismatch.
-  sessionEpoch = Date.now();
+  // The HARD truth: bump resetTimestamp. Any team whose firstSeen < this gets filtered.
+  resetTimestamp = Date.now();
+  persistResetTs();
+  // sessionEpoch is the participant-facing signal (so their phone reloads).
+  sessionEpoch = resetTimestamp;
   persistEpoch();
   undoRoundSnapshot = null;
-  // Add every currently-connected participant id to killedIds, so even phones that miss the
-  // epoch change (e.g. flushing offline writes) get sticky-kicked when they next read /world.
+  // Mark every currently-known id as "killed" too, so their phones get the wipe signal in /world.
   for (const id in participantTeams) {
     if (killedIds.indexOf(id) === -1) killedIds.push(id);
+    joinTimes[id] = 0;  // ensure they fail the filter even if they re-write
   }
+  persistKilledIds();
+  persistJoinTimes();
   // Wipe Firebase teams + world so participants reset on their next world update
   if (fbEnabled) {
     try {
@@ -1515,7 +1604,7 @@ document.getElementById('btnReset').onclick = async () => {
   // Do NOT call loadExistingParticipants — we want a clean slate. Anyone who wants in must re-join.
   render();
   publishWorld();
-  // Aggressive scrub for 5 seconds — wipes Firebase /teams every 500ms, killing any
+  // Aggressive scrub for 15 seconds — wipes Firebase /teams every 500ms, killing any
   // straggler writes from phones still mid-reload or with offline writes flushing.
   let scrubTicks = 0;
   const scrubInterval = setInterval(() => {
@@ -1524,7 +1613,7 @@ document.getElementById('btnReset').onclick = async () => {
     syncParticipantsIntoState();
     renderPositions();
     scrubTicks++;
-    if (scrubTicks >= 10) clearInterval(scrubInterval);
+    if (scrubTicks >= 30) clearInterval(scrubInterval);
   }, 500);
 };
 

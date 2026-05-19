@@ -360,8 +360,17 @@ const SESSION_EPOCH_KEY = 'workshop:sessionEpoch';
 function handleSessionEpoch(world) {
   if (!world) return false;
   const myId = localStorage.getItem(TEAM_ID_KEY);
-  // Individual kill: instructor explicitly removed this team
-  if (myId && Array.isArray(world.killedIds) && world.killedIds.indexOf(myId) !== -1) {
+  // Individual kill: instructor explicitly removed this team. Check BOTH the map and array
+  // representations because Firebase serializes arrays inconsistently.
+  let imKilled = false;
+  if (myId) {
+    if (world.killedMap && typeof world.killedMap === 'object' && world.killedMap[myId]) imKilled = true;
+    else if (Array.isArray(world.killedIds) && world.killedIds.indexOf(myId) !== -1) imKilled = true;
+    else if (world.killedIds && typeof world.killedIds === 'object') {
+      for (const k in world.killedIds) { if (world.killedIds[k] === myId) { imKilled = true; break; } }
+    }
+  }
+  if (imKilled) {
     localStorage.removeItem(TEAM_STATE_KEY(myId));
     localStorage.removeItem(TEAM_ID_KEY);
     localStorage.removeItem(TEAM_NAME_KEY);
