@@ -200,8 +200,12 @@
   .ptile .mo { font-size: 9px; letter-spacing: 0.8px; font-weight: 700; color: var(--muted); }
   .ptile .lots { font-size: 12px; font-weight: 800; color: var(--text); line-height: 1.1; margin-top: 1px; }
   .ptile .ent { font-size: 8px; color: var(--muted); line-height: 1.1; }
-  .ptile.has { background: var(--accent-soft); border-color: var(--accent); }
-  .ptile.has .mo { color: var(--accent); }
+  .ptile.has.short { background: var(--accent-soft); border-color: var(--accent); }
+  .ptile.has.short .mo { color: var(--accent); }
+  .ptile.has.short .lots { color: var(--accent); }
+  .ptile.has.long { background: rgba(27,127,58,0.12); border-color: var(--buy); }
+  .ptile.has.long .mo { color: var(--buy); }
+  .ptile.has.long .lots { color: var(--buy); }
   .ptile.empty .lots { color: #cccccc; }
   .ptile.exp { background: #ebebeb; opacity: 0.5; }
   .ptile.exp .lots { color: var(--muted); }
@@ -742,13 +746,14 @@ function nextRound() {
   handleExpiries(currentRound);
   // 3. Advance
   state.round += 1;
-  // 4. Sweep MTM to the new round's marks
+  // 4. Sweep MTM to the new round's marks (side-aware)
   const r = SCRIPTED_ROUNDS[state.round - 1];
   for (const team of state.teams) {
     for (const pos of team.positions) {
       const newMark = r.curve[pos.month];
       if (newMark == null) continue;
-      const mtmDelta = (pos.entry - newMark) * pos.lots * GAL_PER_CONTRACT;
+      const dir = pos.side === 'long' ? 1 : -1;
+      const mtmDelta = dir * (newMark - pos.entry) * pos.lots * GAL_PER_CONTRACT;
       team.realized += mtmDelta;
       pos.entry = newMark;
     }
@@ -783,7 +788,10 @@ function teamMTM(team) {
   for (const p of team.positions) {
     const mark = r.curve[p.month];
     if (mark != null) {
-      unrealized += (p.entry - mark) * p.lots * GAL_PER_CONTRACT;
+      // Short = (entry - mark) * lots  (loses on rally)
+      // Long  = (mark - entry) * lots  (gains on rally)
+      const dir = p.side === 'long' ? 1 : -1;
+      unrealized += dir * (mark - p.entry) * p.lots * GAL_PER_CONTRACT;
     }
   }
   return unrealized;
@@ -1130,9 +1138,11 @@ function renderPositions() {
       const expired = (r.curve[m] == null);
       const p = byMonth[m];
       if (p) {
-        cells += `<div class="ptile has">
+        const sideCls = p.side === 'long' ? 'long' : 'short';
+        const sign = p.side === 'long' ? '+' : '−';
+        cells += `<div class="ptile has ${sideCls}">
           <div class="mo">${m}</div>
-          <div class="lots">${p.lots.toLocaleString()}</div>
+          <div class="lots">${sign}${p.lots.toLocaleString()}</div>
           <div class="ent">@ $${p.entry.toFixed(4)}</div>
         </div>`;
       } else {
