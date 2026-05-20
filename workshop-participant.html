@@ -216,7 +216,7 @@
   <!-- HEADER -->
   <div class="header-row">
     <div>
-      <h1>Trading 101 — <span>Your Team</span></h1>
+      <h1>Trading 101 — <span id="teamNameHeader">Your Team</span></h1>
       <div class="sub" id="teamSub">Loading…</div>
     </div>
     <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
@@ -1011,6 +1011,7 @@ function render(world) {
   }
   setStatus(`Live · last sync ${new Date(world.lastUpdate).toLocaleTimeString()}`, true);
   document.getElementById('teamSub').textContent = `Team: ${teamState.name} · started short 1,200 lots JUN HO @ $3.8500`;
+  { const hdr = document.getElementById('teamNameHeader'); if (hdr && teamState.name) hdr.textContent = teamState.name; }
   const r = world.rounds[world.round - 1];
   if (r && r.practice) {
     document.getElementById('roundLabel').textContent = '';
